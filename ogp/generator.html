@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>Highlite OGP Generator — sns-multi-post</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700;900&family=Noto+Sans+JP:wght@400;500;700;900&display=swap" rel="stylesheet">
+<style>
+  /* ========== HL Design Tokens (brand/design-tokens.md と同期) ========== */
+  :root {
+    --bg-primary: #0A0A0F;
+    --bg-secondary: #1A1A24;
+    --text-primary: #FFFFFF;
+    --text-secondary: #B8B8C8;
+    --crystal-primary: #7DD3FC;
+    --crystal-accent: #A78BFA;
+    --safe-pad: 80px;
+  }
+
+  body {
+    margin: 0;
+    font-family: 'Roboto', 'Noto Sans JP', sans-serif;
+    background: #f5f5f7;
+    color: #1a1a24;
+    line-height: 1.6;
+  }
+  header {
+    padding: 24px 32px;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  header h1 { margin: 0; font-size: 20px; font-weight: 700; }
+  header .ver { font-size: 12px; color: var(--text-secondary); }
+
+  main {
+    display: grid;
+    grid-template-columns: 360px 1fr;
+    gap: 24px;
+    padding: 24px;
+    max-width: 1600px;
+    margin: 0 auto;
+  }
+
+  .panel {
+    background: white;
+    border-radius: 12px;
+    padding: 20px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  }
+
+  .panel h2 { margin: 0 0 16px; font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #555; }
+
+  label { display: block; font-size: 12px; font-weight: 600; color: #333; margin-bottom: 6px; }
+  input[type=text], textarea, select {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 10px 12px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    font-family: inherit;
+    font-size: 14px;
+    margin-bottom: 14px;
+  }
+  textarea { resize: vertical; min-height: 60px; }
+  input[type=color] { width: 60px; height: 36px; padding: 0; border: none; cursor: pointer; }
+
+  .row { display: flex; gap: 8px; align-items: center; margin-bottom: 14px; }
+  .row label { margin: 0; flex: 1; }
+
+  button {
+    padding: 12px 20px;
+    background: var(--bg-primary);
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-weight: 700;
+    cursor: pointer;
+    font-size: 14px;
+  }
+  button:hover { opacity: 0.85; }
+  button.secondary { background: white; color: var(--bg-primary); border: 1px solid #ccc; }
+
+  .preset-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+  .preset-row button { padding: 6px 12px; font-size: 12px; font-weight: 500; background: #eee; color: #333; }
+  .preset-row button.active { background: var(--bg-primary); color: white; }
+
+  /* ========== Canvas Stage ========== */
+  .stage {
+    background: white;
+    border-radius: 12px;
+    padding: 20px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  .stage-info { font-size: 12px; color: #666; margin-bottom: 12px; }
+  #canvasWrap {
+    width: 100%;
+    max-width: 1100px;
+    aspect-ratio: var(--ar, 1200 / 630);
+    position: relative;
+    overflow: hidden;
+    background: var(--bg-primary);
+    border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+  }
+  /* Inner artboard scales to native size; transformed for preview */
+  #artboard {
+    position: absolute;
+    inset: 0;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: var(--safe-pad);
+    box-sizing: border-box;
+  }
+  /* native size container; we'll use html2canvas-like approach via SVG foreignObject for export */
+  .headline {
+    font-size: 88px;
+    font-weight: 900;
+    line-height: 1.2;
+    letter-spacing: -0.01em;
+    margin: 0;
+    word-break: break-word;
+  }
+  .subline {
+    font-size: 36px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    margin: 24px 0 0;
+    line-height: 1.4;
+  }
+  .accent-bar {
+    width: 80px;
+    height: 6px;
+    background: var(--crystal-primary);
+    margin-bottom: 32px;
+  }
+  .footer-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+  }
+  .logo {
+    font-family: 'Roboto', sans-serif;
+    font-weight: 900;
+    font-size: 32px;
+    color: var(--text-primary);
+    letter-spacing: 0.02em;
+  }
+  .logo .dot {
+    color: var(--crystal-primary);
+  }
+  .meta {
+    font-size: 18px;
+    color: var(--text-secondary);
+    text-align: right;
+  }
+
+  /* OGP 1200x630 → preview scale via aspect-ratio */
+  .stage-1200x630 #canvasWrap { --ar: 1200 / 630; }
+  .stage-1080x1080 #canvasWrap { --ar: 1 / 1; }
+  .stage-1080x1920 #canvasWrap { --ar: 1080 / 1920; }
+
+  /* For square/vertical, we hide accent bar position differently */
+  .square .accent-bar { margin-bottom: 24px; }
+  .square .headline { font-size: 84px; }
+  .vertical .headline { font-size: 96px; }
+  .vertical { padding: var(--safe-pad) calc(var(--safe-pad) * 0.75); }
+
+  .actions { display: flex; gap: 12px; margin-top: 16px; }
+
+  .help {
+    background: #fff7e6;
+    padding: 12px 16px;
+    border-radius: 6px;
+    border-left: 3px solid #f59e0b;
+    font-size: 12px;
+    color: #663c00;
+    margin-bottom: 16px;
+  }
+
+  /* Hidden export canvas — actual native size for download */
+  #exportCanvas { display: none; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Highlite OGP Generator</h1>
+  <span class="ver">sns-multi-post / v1.0</span>
+</header>
+
+<main>
+  <!-- ========== Control Panel ========== -->
+  <section class="panel">
+    <h2>Content</h2>
+
+    <label>サイズプリセット</label>
+    <div class="preset-row" id="sizePresets">
+      <button data-size="1200x630" class="active">OGP 1200×630</button>
+      <button data-size="1080x1080">Square 1080×1080</button>
+      <button data-size="1080x1920">Vertical 1080×1920</button>
+    </div>
+
+    <label for="headline">見出し（1〜2行）</label>
+    <textarea id="headline" rows="2">BtoBマーケで、3年やってやっと気づいたこと</textarea>
+
+    <label for="subline">サブコピー（任意・1行）</label>
+    <input id="subline" type="text" value="KPIは数字より、検証順序で決まる。">
+
+    <label for="meta">右下の補足（任意 / 日付・カテゴリなど）</label>
+    <input id="meta" type="text" value="2026.04 — Lead Marketing Note">
+
+    <h2 style="margin-top: 24px;">Brand Tokens</h2>
+    <div class="help">
+      ⚠️ 値を変えるとプレビューに即反映。確定値は <code>brand/design-tokens.md</code> に書き戻して。
+    </div>
+    <div class="row">
+      <label>--bg-primary</label>
+      <input type="color" id="bgPrimary" value="#0A0A0F">
+    </div>
+    <div class="row">
+      <label>--text-primary</label>
+      <input type="color" id="textPrimary" value="#FFFFFF">
+    </div>
+    <div class="row">
+      <label>--text-secondary</label>
+      <input type="color" id="textSecondary" value="#B8B8C8">
+    </div>
+    <div class="row">
+      <label>--crystal-primary</label>
+      <input type="color" id="crystalPrimary" value="#7DD3FC">
+    </div>
+
+    <div class="actions">
+      <button id="downloadBtn">PNG ダウンロード</button>
+      <button class="secondary" id="copyBtn">画像コピー</button>
+    </div>
+  </section>
+
+  <!-- ========== Preview Stage ========== -->
+  <section class="stage stage-1200x630" id="stage">
+    <div class="stage-info" id="stageInfo">Preview: 1200×630（実サイズ書き出し）</div>
+    <div id="canvasWrap">
+      <div id="artboard">
+        <div>
+          <div class="accent-bar"></div>
+          <h1 class="headline" id="previewHeadline">BtoBマーケで、3年やってやっと気づいたこと</h1>
+          <p class="subline" id="previewSubline">KPIは数字より、検証順序で決まる。</p>
+        </div>
+        <div class="footer-row">
+          <div class="meta" id="previewMeta">2026.04 — Lead Marketing Note</div>
+          <div class="logo">Highlite<span class="dot">.</span></div>
+        </div>
+      </div>
+    </div>
+    <canvas id="exportCanvas"></canvas>
+  </section>
+</main>
+
+<script>
+const $ = (s) => document.querySelector(s);
+const stage = $('#stage');
+const stageInfo = $('#stageInfo');
+const root = document.documentElement;
+
+// ===== Live binding =====
+function bindInput(id, callback) {
+  const el = document.getElementById(id);
+  el.addEventListener('input', () => callback(el.value));
+}
+bindInput('headline', v => $('#previewHeadline').textContent = v);
+bindInput('subline', v => $('#previewSubline').textContent = v);
+bindInput('meta', v => $('#previewMeta').textContent = v);
+bindInput('bgPrimary', v => root.style.setProperty('--bg-primary', v));
+bindInput('textPrimary', v => root.style.setProperty('--text-primary', v));
+bindInput('textSecondary', v => root.style.setProperty('--text-secondary', v));
+bindInput('crystalPrimary', v => root.style.setProperty('--crystal-primary', v));
+
+// ===== Size preset =====
+let currentSize = '1200x630';
+const SIZES = {
+  '1200x630': { w: 1200, h: 630, klass: 'stage-1200x630', extra: '' },
+  '1080x1080': { w: 1080, h: 1080, klass: 'stage-1080x1080', extra: 'square' },
+  '1080x1920': { w: 1080, h: 1920, klass: 'stage-1080x1920', extra: 'vertical' }
+};
+document.querySelectorAll('#sizePresets button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('#sizePresets button').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    currentSize = btn.dataset.size;
+    const cfg = SIZES[currentSize];
+    stage.className = 'stage ' + cfg.klass;
+    $('#artboard').className = cfg.extra;
+    stageInfo.textContent = `Preview: ${cfg.w}×${cfg.h}（実サイズ書き出し）`;
+  });
+});
+
+// ===== Export to PNG =====
+// Uses SVG foreignObject technique (no external lib).
+async function renderToCanvas() {
+  const cfg = SIZES[currentSize];
+  const w = cfg.w, h = cfg.h;
+  const cs = getComputedStyle(root);
+
+  const headline = $('#headline').value || '';
+  const subline = $('#subline').value || '';
+  const meta = $('#meta').value || '';
+  const bg = cs.getPropertyValue('--bg-primary').trim() || '#0A0A0F';
+  const text = cs.getPropertyValue('--text-primary').trim() || '#FFFFFF';
+  const sub = cs.getPropertyValue('--text-secondary').trim() || '#B8B8C8';
+  const crystal = cs.getPropertyValue('--crystal-primary').trim() || '#7DD3FC';
+
+  const isSquare = currentSize === '1080x1080';
+  const isVertical = currentSize === '1080x1920';
+
+  const headSize = isVertical ? 96 : (isSquare ? 84 : 88);
+  const subSize = 36;
+  const pad = 80;
+
+  // Use SVG <foreignObject> with HTML so fonts apply
+  const svg = `
+<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">
+  <rect width="${w}" height="${h}" fill="${bg}"/>
+  <foreignObject x="0" y="0" width="${w}" height="${h}">
+    <div xmlns="http://www.w3.org/1999/xhtml" style="
+      width:${w}px;height:${h}px;
+      box-sizing:border-box;padding:${pad}px;
+      display:flex;flex-direction:column;justify-content:space-between;
+      font-family:'Roboto','Noto Sans JP',sans-serif;color:${text};">
+      <div>
+        <div style="width:80px;height:6px;background:${crystal};margin-bottom:32px"></div>
+        <div style="font-size:${headSize}px;font-weight:900;line-height:1.2;">${escapeHtml(headline)}</div>
+        ${subline ? `<div style="font-size:${subSize}px;font-weight:500;color:${sub};margin-top:24px;">${escapeHtml(subline)}</div>` : ''}
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:flex-end;">
+        <div style="font-size:18px;color:${sub}">${escapeHtml(meta)}</div>
+        <div style="font-family:'Roboto',sans-serif;font-weight:900;font-size:32px;letter-spacing:0.02em">Highlite<span style="color:${crystal}">.</span></div>
+      </div>
+    </div>
+  </foreignObject>
+</svg>`;
+
+  const blob = new Blob([svg], { type: 'image/svg+xml;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const img = new Image();
+  await new Promise((res, rej) => {
+    img.onload = res; img.onerror = rej; img.src = url;
+  });
+  const canvas = $('#exportCanvas');
+  canvas.width = w; canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(img, 0, 0, w, h);
+  URL.revokeObjectURL(url);
+  return canvas;
+}
+
+function escapeHtml(s) {
+  return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+$('#downloadBtn').addEventListener('click', async () => {
+  const canvas = await renderToCanvas();
+  const a = document.createElement('a');
+  const filename = `highlite-ogp-${currentSize}-${Date.now()}.png`;
+  a.download = filename;
+  a.href = canvas.toDataURL('image/png');
+  a.click();
+});
+
+$('#copyBtn').addEventListener('click', async () => {
+  const canvas = await renderToCanvas();
+  canvas.toBlob(async (blob) => {
+    try {
+      await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+      $('#copyBtn').textContent = 'コピー済み ✓';
+      setTimeout(() => $('#copyBtn').textContent = '画像コピー', 2000);
+    } catch(e) {
+      alert('画像コピー失敗。代わりにダウンロードを使ってください: ' + e.message);
+    }
+  }, 'image/png');
+});
+</script>
+</body>
+</html>

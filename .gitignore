@@ -1,0 +1,23 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*~
+
+# Generated images（生成画像はGitに上げない方針）
+ogp/generated/
+*.png
+*.jpg
+*.jpeg
+
+# 個別の入力メモ（テンプレ以外）
+templates/input-memo-*.md
+!templates/input-memo.md
+
+# 環境ファイル（念のため）
+.env
+.env.*
