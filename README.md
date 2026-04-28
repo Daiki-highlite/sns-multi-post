@@ -52,12 +52,17 @@ sns-multi-post/
 
 ## 🔧 初回セットアップ（10分・1回だけ）
 
-### 1. リポジトリを取得
+### 0. リモートリポジトリ
+
+正規リポジトリ: **https://github.com/daiki-highlite/sns-multi-post** （public）
+
+### 1. リポジトリを取得（2人目以降）
 
 ```bash
-# 既にcloneしていればスキップ
 cd ~/Documents/Claude/Projects/Marketing-リードマーケ
-git clone <この repo の URL> sns-multi-post   # もしくは Pull
+git clone https://github.com/daiki-highlite/sns-multi-post.git
+# もしくは SSH
+# git clone git@github.com:daiki-highlite/sns-multi-post.git
 ```
 
 ### 2. デザイントークンの正しいHEXを埋める
