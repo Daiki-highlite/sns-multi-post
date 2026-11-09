@@ -5,9 +5,10 @@ import "./approval-dashboard.css";
 import "./swipe-approval.css";
 import "./destinations.css";
 import "./platform-mobile-preview.css";
+import "./workspace-tabs.css";
 
 export const metadata: Metadata = {
-  title: "Highlite | 投稿ダッシュボード",
+  title: "Highlite | POST",
   description: "原稿を確認して、承認した投稿を届ける。Highliteのプライベート投稿管理。",
   robots: { index: false, follow: false },
   icons: {

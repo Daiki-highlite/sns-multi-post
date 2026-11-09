@@ -8,6 +8,9 @@ import { configuredDestinations } from "@/lib/destination-settings";
 import { readCalendar } from "@/lib/sheets";
 import { runDueJobs } from "@/lib/jobs";
 import type { CalendarExport, Platform, Post } from "@/lib/types";
+import { approvalAccounts } from "@/lib/delivery";
+import { deliveryMode } from "@/lib/delivery-settings";
+import { agentJob, publishedEvidence, AGENT_LEASE_MS } from "@/lib/browser-agent";
 import { bulkPlan } from "@/lib/bulk";
 export const dynamic = "force-dynamic";
 async function body(request: Request) {
@@ -38,7 +41,7 @@ async function api(request: Request) {
   if (path === "jobs/run" && method === "POST") { service(request); return json(await runDueJobs()); }
   if (path === "bootstrap" && method === "POST") { service(request); const n = await database().prepare("SELECT count(*) AS n FROM posts").first<{ n: number }>(); if (n?.n) throw new AppError("初回取り込みは完了しています。", 409); return json(await importCalendar(await body(request), true, {}, "初回取り込み")); }
   const user = await member(request), actor = user.displayName;
-  if (path === "state" && method === "GET") return json({ posts: await allPosts(), ...await metadata(), destinations:configuredDestinations(), user: { displayName: actor, email: user.email }, sheetsReady: !!runtime("GOOGLE_SERVICE_ACCOUNT_EMAIL") && !!runtime("GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY"), schedulerReady: runtime("SCHEDULER_ENABLED") === "true" });
+  if (path === "state" && method === "GET") return json({ posts: await allPosts(), ...await metadata(), destinations:configuredDestinations(), deliveryMode:deliveryMode(), user: { displayName: actor, email: user.email }, sheetsReady: !!runtime("GOOGLE_SERVICE_ACCOUNT_EMAIL") && !!runtime("GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY"), schedulerReady: runtime("SCHEDULER_ENABLED") === "true" });
   if (path === "import" && method === "POST") { const input = await body(request); return json(await importCalendar(input.data, input.apply === true, input.overwrite ?? {}, actor)); }
   if (path === "sheets/read" && method === "POST") { const input = await body(request); return json(await importCalendar(await readCalendar(input.spreadsheetId, input.tabs), false, {}, actor)); }
   if (path === "posts/bulk" && method === "POST") {
@@ -47,7 +50,7 @@ async function api(request: Request) {
     const db=database(),plan=bulkPlan(await allPosts(),input.options);
     if(input.mode==="approve"&&!input.allowIncomplete&&plan.some(p=>p.errors.length))throw new AppError("確認が必要な原稿があります。下書きに残すか、共通設定を見直してください。");
     const connections=await db.prepare("SELECT platform,account_id FROM connections").all<{platform:Platform;account_id:string}>();
-    const accounts=Object.fromEntries(connections.results.map(c=>[c.platform,c.account_id]));
+    const accounts=approvalAccounts(connections.results.map(c=>({platform:c.platform,accountId:c.account_id,label:"",configured:true})),configuredDestinations(),deliveryMode());
     if(input.mode==="approve"&&input.options.platforms.some((p:Platform)=>(input.destinations?.[p]||"")!==(accounts[p]||"")))throw new AppError("投稿先が変更されました。再読み込みして確認してください。",409);
     const mediaIds=[...new Set<string>(plan.flatMap(p=>p.draft.mediaIds))];
     if(mediaIds.length){const known=await db.prepare("SELECT id FROM media").all<{id:string}>();const valid=new Set(known.results.map(m=>m.id));if(mediaIds.some(id=>!valid.has(id)))throw new AppError("選択した画像が見つかりません。画像を選び直してください。");}
@@ -55,7 +58,8 @@ async function api(request: Request) {
     for(const entry of plan){
       if(!entry.canSave){skipped.push({id:entry.original.id,title:entry.original.title,reason:entry.errors[0]});continue;}
       const isApproval=input.mode==="approve"&&!entry.errors.length;
-      const stamp=new Date().toISOString(),next:Post={...entry.draft,targets:undefined,version:entry.original.version+1,revision:crypto.randomUUID(),approvedVersion:isApproval?entry.original.version+1:null,approvedAt:isApproval?stamp:null,approvedBy:isApproval?actor:null,status:isApproval?"approved":"review",updatedAt:stamp};
+      if(isApproval && deliveryMode()==="browser_agent" && entry.draft.platforms.some(p=>!accounts[p]))throw new AppError("投稿先のURLを指定してください。");
+      const stamp=new Date().toISOString(),next:Post={...entry.draft,approvedDeliveryMode:isApproval?deliveryMode():undefined,approvedDestinations:isApproval?configuredDestinations().filter(d=>entry.draft.platforms.includes(d.platform)):undefined,targets:undefined,version:entry.original.version+1,revision:crypto.randomUUID(),approvedVersion:isApproval?entry.original.version+1:null,approvedAt:isApproval?stamp:null,approvedBy:isApproval?actor:null,status:isApproval?"approved":"review",updatedAt:stamp};
       const statements=[db.prepare("UPDATE posts SET document=?,revision=?,version=?,approved_version=?,planned_at=?,updated_at=? WHERE id=? AND revision=? AND approved_version IS NULL AND NOT EXISTS(SELECT 1 FROM targets WHERE post_id=? AND state IN ('sending','published','unknown'))").bind(JSON.stringify(next),next.revision,next.version,next.approvedVersion,next.plannedAt,stamp,next.id,entry.original.revision,next.id),db.prepare("DELETE FROM targets WHERE post_id=? AND EXISTS(SELECT 1 FROM posts WHERE id=? AND revision=?)").bind(next.id,next.id,next.revision)];
       if(isApproval)for(const t of makeTargetPayloads(next,accounts))statements.push(db.prepare("INSERT INTO targets(id,post_id,version,platform,sequence,parent_id,state,scheduled_at,payload,attempts,updated_at) SELECT ?,?,?,?,?,?,'queued',?,?,0,? WHERE EXISTS(SELECT 1 FROM posts WHERE id=? AND revision=?)").bind(t.id,next.id,next.version,t.platform,t.sequence,t.parentId,next.plannedAt,JSON.stringify(t.payload),stamp,next.id,next.revision));
       const results=await db.batch(statements);
@@ -90,9 +94,10 @@ async function api(request: Request) {
       if (old.platforms.includes("x") && old.content.x.some(text => !twitterText.parseTweet(text).valid)) throw new AppError("Xの文字数・本文を確認してください。日本語やURLは重み付きで数えます。");
       if (old.mediaIds.length) { const found = await db.prepare(`SELECT count(*) AS n FROM media WHERE id IN (${old.mediaIds.map(() => "?").join(",")})`).bind(...old.mediaIds).first<{ n: number }>(); if (found?.n !== old.mediaIds.length) throw new AppError("添付画像を確認してください。"); }
       const connections = await db.prepare("SELECT platform,account_id FROM connections").all<{platform:Platform;account_id:string}>();
-      const accounts = Object.fromEntries(connections.results.map(c=>[c.platform,c.account_id]));
+      const accounts = approvalAccounts(connections.results.map(c=>({platform:c.platform,accountId:c.account_id,label:"",configured:true})),configuredDestinations(),deliveryMode());
       if (old.platforms.some(p=>(input.destinations?.[p]||"")!==(accounts[p]||""))) throw new AppError("投稿先の接続が更新されました。再読み込みして確認してください。",409);
-      const instant = new Date(), next: Post = { ...old, ...(input.immediate===true?{plannedAt:instant.toISOString(),date:new Intl.DateTimeFormat("sv-SE",{timeZone:"Asia/Tokyo"}).format(instant),time:new Intl.DateTimeFormat("en-GB",{timeZone:"Asia/Tokyo",hour:"2-digit",minute:"2-digit"}).format(instant)}:{}), approvedVersion: old.version, approvedBy: actor, approvedAt: instant.toISOString(), status: "approved", reviewHold: null, revision: crypto.randomUUID(), updatedAt: instant.toISOString() };
+      if(deliveryMode()==="browser_agent" && old.platforms.some(p=>!accounts[p]))throw new AppError("投稿先のURLを指定してください。");
+      const instant = new Date(), next: Post = { ...old, approvedDeliveryMode:deliveryMode(), approvedDestinations:configuredDestinations().filter(d=>old.platforms.includes(d.platform)), ...(input.immediate===true?{plannedAt:instant.toISOString(),date:new Intl.DateTimeFormat("sv-SE",{timeZone:"Asia/Tokyo"}).format(instant),time:new Intl.DateTimeFormat("en-GB",{timeZone:"Asia/Tokyo",hour:"2-digit",minute:"2-digit"}).format(instant)}:{}), approvedVersion: old.version, approvedBy: actor, approvedAt: instant.toISOString(), status: "approved", reviewHold: null, revision: crypto.randomUUID(), updatedAt: instant.toISOString() };
       const stmts = [db.prepare("UPDATE posts SET document=?,revision=?,approved_version=?,planned_at=?,updated_at=? WHERE id=? AND revision=? AND NOT EXISTS(SELECT 1 FROM targets WHERE post_id=? AND state IN ('sending','published','unknown'))").bind(JSON.stringify(next), next.revision, next.version, next.plannedAt, next.updatedAt, id, old.revision, id)];
       for (const t of makeTargetPayloads(next,accounts)) stmts.push(db.prepare("INSERT INTO targets(id,post_id,version,platform,sequence,parent_id,state,scheduled_at,payload,attempts,updated_at) SELECT ?,?,?,?,?,?,'queued',?,?,0,? WHERE EXISTS(SELECT 1 FROM posts WHERE id=? AND revision=?) ON CONFLICT(id) DO NOTHING").bind(t.id, id, old.version, t.platform, t.sequence, t.parentId, next.plannedAt, JSON.stringify(t.payload), next.updatedAt, id, next.revision));
       const results = await db.batch(stmts); if (!results[0].meta.changes) throw new AppError("投稿が更新されました。再読み込みしてください。", 409);
@@ -160,6 +165,40 @@ async function api(request: Request) {
     const id = path.split("/")[1]; if (!/^[a-f0-9-]{36}$/.test(id)) throw new AppError("画像が見つかりません。",404);
     const object = await env.BUCKET?.get(`preview/${id}`); if (!object) throw new AppError("画像が見つかりません。",404);
     return new Response(object.body,{headers:{"Content-Type":object.httpMetadata?.contentType || "image/jpeg","Cache-Control":"private, no-store","X-Content-Type-Options":"nosniff"}});
+  }
+  if(path==="agent/packet" && method==="GET") {
+    const posts=await allPosts(),meta=await metadata(),origin=new URL(request.url).origin;
+    return json({schemaVersion:1,mode:"browser_agent",generatedAt:new Date().toISOString(),harness:`${origin}/agent/HARNESS.md`,jobs:posts.filter(p=>p.approvedVersion===p.version).flatMap(p=>(p.targets||[]).map(t=>agentJob(p,t,configuredDestinations(),meta.media,origin)))});
+  }
+  const agentMatch=path.match(/^agent\/targets\/([^/]+)\/(claim|result)$/);
+  if(agentMatch && method==="POST") {
+    if(deliveryMode()!=="browser_agent")throw new AppError("SNS画面でのエージェント実行は選択されていません。",409);
+    const input=await body(request),posts=await allPosts(),id=decodeURIComponent(agentMatch[1]),post=posts.find(p=>p.targets?.some(t=>t.id===id)),target=post?.targets?.find(t=>t.id===id);
+    if(!post || !target)throw new AppError("送信対象が見つかりません。",404);
+    if(input.revision!==post.revision)throw new AppError("原稿が更新されました。再読み込みしてください。",409);
+    const db=database(),now=new Date().toISOString(),destination=post.approvedDestinations?.find(d=>d.platform===target.platform);
+    if(agentMatch[2]==="claim") {
+      if(target.state==="sending" && target.claimedAt && Date.now()-Date.parse(target.claimedAt)>AGENT_LEASE_MS) {
+        await db.prepare("UPDATE targets SET state='unknown',error=?,updated_at=? WHERE id=? AND state='sending' AND claimed_at=?").bind("作業開始から15分経過しました。SNS上の投稿結果を確認してください。",now,id,target.claimedAt).run();
+        throw new AppError("作業が中断された可能性があります。再投稿せず、SNS上の公開結果を確認してください。",409);
+      }
+      const meta=await metadata(),job=agentJob(post,target,configuredDestinations(),meta.media,new URL(request.url).origin);
+      if(!job.canClaim)throw new AppError(job.blockers.join(" "),409);
+      const result=await db.prepare("UPDATE targets SET state='sending',claimed_at=?,attempts=attempts+1,error=NULL,updated_at=? WHERE id=? AND state IN ('queued','blocked') AND EXISTS(SELECT 1 FROM posts WHERE id=targets.post_id AND revision=? AND version=targets.version AND approved_version=targets.version)").bind(now,now,id,post.revision).run();
+      if(!result.meta.changes)throw new AppError("別の担当が作業を開始しました。再読み込みしてください。",409);
+      await activity("agent-claimed",actor,`${target.platform}のSNS画面での投稿作業を開始しました。`,post.id);
+      return json({claimed:true,job:{...job,state:"sending",claim:now,canClaim:false}});
+    }
+    if(post.approvedDeliveryMode!=="browser_agent" || !["sending","unknown"].includes(target.state) || !input.claim || input.claim!==target.claimedAt)throw new AppError("作業の引き受け状態が変わりました。再読み込みしてください。",409);
+    if(!["published","failed","unknown"].includes(input.outcome))throw new AppError("作業結果を選択してください。");
+    if(target.state==="unknown" && input.outcome==="failed")throw new AppError("結果不明の投稿を未投稿には戻せません。SNS上で公開結果を確認してください。",409);
+    const evidence=input.outcome==="published" ? publishedEvidence(target.platform,input.url,destination) : null;
+    if(evidence && input.accountConfirmed!==true)throw new AppError("本文・投稿先・画像の一致をSNS上で確認してください。");
+    const note=String(input.note||"").slice(0,1000);
+    const result=await db.prepare("UPDATE targets SET state=?,remote_id=?,url=?,error=?,updated_at=? WHERE id=? AND state IN ('sending','unknown') AND claimed_at=? AND EXISTS(SELECT 1 FROM posts WHERE id=targets.post_id AND revision=? AND approved_version=targets.version AND version=targets.version)").bind(input.outcome,evidence?.id||null,evidence?.url||null,evidence?null:note||"SNS上の公開結果を確認してください。",now,id,input.claim,post.revision).run();
+    if(!result.meta.changes)throw new AppError("作業状態が更新されました。再読み込みしてください。",409);
+    await activity(evidence?"published":input.outcome,actor,evidence?`${target.platform}の公開をSNS画面で確認しました。 ${evidence.url}`:`${target.platform}の作業結果：${input.outcome}。${note}`,post.id);
+    return json({saved:true});
   }
   if (path === "media" && method === "POST") {
     if (!env.BUCKET) throw new AppError("画像保管の初期設定が必要です。", 503);

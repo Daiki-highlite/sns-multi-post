@@ -1,6 +1,8 @@
 import { database, activity, targetFrom } from "./store";
+import { deliveryMode } from "./delivery-settings";
 import { publish, SendError } from "./providers";
 export async function runDueJobs() {
+  if(deliveryMode()!=="api")return {checkedAt:new Date().toISOString(),results:[],mode:"browser_agent",message:"SNS画面でエージェントが実行します。有料APIは呼び出しません。"};
   const db = database(), now = new Date().toISOString();
   // A crashed request may already have published; an expired lease is never replayed.
   await db.prepare("UPDATE targets SET state='unknown',error=?,updated_at=? WHERE state='sending' AND claimed_at < ?").bind("処理が中断されました。投稿先で公開結果を確認してください。", now, new Date(Date.now() - 300000).toISOString()).run();
@@ -8,6 +10,7 @@ export async function runDueJobs() {
   const results: { id: string; state: string }[] = [];
   for (const raw of rows.results) {
     const target = targetFrom(raw);
+    if(target.payload.accountId.startsWith("web:"))continue;
     if (Date.now() - Date.parse(target.scheduledAt) > 600000) { await db.prepare("UPDATE targets SET state='failed',error=?,updated_at=? WHERE id=? AND state IN ('queued','blocked')").bind("公開予定から10分以上経過しました。日時を確認して再試行してください。", now, target.id).run(); results.push({ id: target.id, state: "failed" }); continue; }
     let parentId: string | undefined;
     if (target.parentId) { const parent = await db.prepare("SELECT state,remote_id FROM targets WHERE id=?").bind(target.parentId).first<{ state: string; remote_id: string }>(); if (parent?.state !== "published" || !parent.remote_id) continue; parentId = parent.remote_id; }

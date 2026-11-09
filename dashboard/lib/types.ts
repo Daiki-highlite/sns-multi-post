@@ -13,6 +13,7 @@ export type Post = {
   plannedAt: string; content: PostContent; platforms: Platform[]; mediaIds: string[];
   imageIdea: string; imagePrompt: string; notes: string; source: string; productionStatus: string;
   needsImage: boolean; version: number; revision: string; approvedVersion: number | null;
+  approvedDestinations?: Destination[]; approvedDeliveryMode?: "browser_agent" | "api";
   approvedBy: string | null; approvedAt: string | null; status: "review" | "approved";
   reviewHold?: { note: string; at: string; by: string } | null;
   createdAt: string; updatedAt: string; sourceHash: string; targets?: Target[];
@@ -23,4 +24,4 @@ export type Destination = { platform: Platform; url: string; label: string; acco
 export type CalendarExport = { spreadsheetId: string; tabs: { name: string; sheetId: number; rows: (string | null)[][] }[] };
 export type Activity = { id: string; postId: string | null; action: string; actor: string; detail: string; createdAt: string };
 export type PreviewReference = { platform: Platform; name: string; theme: "dark" | "light"; headerId: string; avatarId: string; capturedAt: string };
-export type DashboardData = { previewReferences?: PreviewReference[]; posts: Post[]; media: Media[]; connections: Connection[]; destinations: Destination[]; activities: Activity[]; settings: { lastImportAt?: string; importedCount?: number; spreadsheetId?: string; tabs?: { name: string; sheetId: number }[] }; user: { displayName: string; email: string }; sheetsReady: boolean; schedulerReady: boolean };
+export type DashboardData = { deliveryMode?: "browser_agent" | "api"; previewReferences?: PreviewReference[]; posts: Post[]; media: Media[]; connections: Connection[]; destinations: Destination[]; activities: Activity[]; settings: { lastImportAt?: string; importedCount?: number; spreadsheetId?: string; tabs?: { name: string; sheetId: number }[] }; user: { displayName: string; email: string }; sheetsReady: boolean; schedulerReady: boolean };

@@ -8,6 +8,7 @@ async function request(path,method="GET",body){const r=await fetch(`${origin}/ap
 const initial=await request("state");assert.equal(initial.status,200);assert.equal(initial.data.connections.length,0,"Use an unconnected local test environment");
 assert.equal((await fetch(`${origin}/api/jobs/run`,{method:"POST"})).status,403);
 assert.equal((await fetch(`${origin}/api/posts`,{method:"POST",headers:{Cookie:cookie,"Content-Type":"application/json"},body:"{}"})).status,403);
+const destinations=Object.fromEntries(initial.data.destinations.map(d=>[d.platform,`web:${d.url}`]));
 const badReference=new FormData();badReference.set("platform","x");badReference.set("name","test");badReference.set("theme","dark");badReference.set("header",new Blob(["fake jpeg"],{type:"image/jpeg"}),"header.jpg");badReference.set("avatar",new Blob(["fake jpeg"],{type:"image/jpeg"}),"avatar.jpg");
 assert.equal((await fetch(`${origin}/api/preview-references`,{method:"POST",headers:{Origin:origin,Cookie:cookie},body:badReference})).status,400,"Reject disguised image uploads");
 const created=await request("posts","POST",{date:"2027-01-01",time:"10:00"});assert.equal(created.status,200);const id=created.data.id;
@@ -19,8 +20,8 @@ const beforeCorrection=p;
 const corrected={x:["修正したX本文", "修正した続き"],linkedin:"修正したLinkedIn本文",facebook:"修正したFacebook本文"};
 assert.equal((await request(`posts/${id}`,"PATCH",{...p,content:corrected,defer:true,reviewNote:"画像の最終確認"})).status,200);
 p=await find();assert.deepEqual(p.content,corrected);assert.equal(p.reviewHold.note,"画像の最終確認");assert.ok(p.reviewHold.by);assert.ok(p.reviewHold.at);
-assert.equal((await request(`posts/${id}/approve`,"POST",{revision:beforeCorrection.revision,destinations:{}})).status,409,"Cannot approve text shown before correction");
-const [one,two]=await Promise.all([request(`posts/${id}/approve`,"POST",{revision:p.revision,destinations:{}}),request(`posts/${id}/approve`,"POST",{revision:p.revision,destinations:{}})]);assert.deepEqual([one.status,two.status].sort(),[200,409]);
+assert.equal((await request(`posts/${id}/approve`,"POST",{revision:beforeCorrection.revision,destinations})).status,409,"Cannot approve text shown before correction");
+const [one,two]=await Promise.all([request(`posts/${id}/approve`,"POST",{revision:p.revision,destinations}),request(`posts/${id}/approve`,"POST",{revision:p.revision,destinations})]);assert.deepEqual([one.status,two.status].sort(),[200,409]);
 p=await find();assert.equal(p.targets.length,4);assert.equal(p.reviewHold,null);assert.deepEqual(p.targets.map(t=>t.payload.text).sort(),Object.values(corrected).flat().sort(),"Publishing targets must use the saved corrected text");assert.equal(p.approvedVersion,p.version);
 const invalidHold=await request(`posts/${id}`,"PATCH",{...p,defer:true,reviewNote:"x".repeat(2001)});assert.equal(invalidHold.status,400);
 const saved=await request(`posts/${id}`,"PATCH",{...p,title:"[動作検証] 編集で承認解除"});assert.equal(saved.status,200);p=await find();assert.equal(p.approvedVersion,null);assert.equal(p.targets.length,0);

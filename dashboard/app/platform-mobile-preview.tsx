@@ -7,7 +7,7 @@ import type { Connection, Destination, Platform, Post, PreviewReference } from "
 
 const timestamp = (post: Post) => `${Number(post.date.slice(5,7))}月${Number(post.date.slice(8))}日 ${post.time}`;
 
-export default function PlatformMobilePreview({ post, connections, intended, references }: { post: Post; connections: Connection[]; intended: Destination[]; references: PreviewReference[] }) {
+export default function PlatformMobilePreview({ post, connections, intended, references, browserAgent }: { post: Post; connections: Connection[]; intended: Destination[]; references: PreviewReference[]; browserAgent?: boolean }) {
   const [platform, setPlatform] = useState<Platform>(post.platforms[0] || "x");
   const active = post.platforms.includes(platform) ? platform : post.platforms[0];
   const connection = connections.find(item => item.platform === active);
@@ -26,7 +26,7 @@ export default function PlatformMobilePreview({ post, connections, intended, ref
       }}><span className={`preview-platform-mark ${item}`} aria-hidden="true">{item === "x" ? "𝕏" : item === "linkedin" ? "in" : "f"}</span>{PLATFORM_NAMES[item]}</button>)}
     </div>
     <div id={`content-${post.id}`} className={`platform-preview-scroll screen-${active} theme-${reference?.theme || (active === "linkedin" ? "light" : "dark")}`} role="tabpanel" aria-labelledby={active ? `tab-${post.id}-${active}` : undefined} key={`${post.revision}:${active}`}>
-      {active && <div className="platform-destination"><span>投稿先：{destination ? <a href={destination.url} target="_blank" rel="noreferrer">{connection?.label || destination.label}</a> : connection?.label || PLATFORM_NAMES[active]}</span><small>{connection ? "接続済み" : "未接続"}</small></div>}
+      {active && <div className="platform-destination"><span>投稿先：{destination ? <a href={destination.url} target="_blank" rel="noreferrer">{connection?.label || destination.label}</a> : connection?.label || PLATFORM_NAMES[active]}</span><small>{browserAgent ? "SNS画面で投稿" : connection ? "接続済み" : "未接続"}</small></div>}
       <div className="social-screen">
         {reference ? <img className="social-screen-header" src={`/api/preview-assets/${reference.headerId}`} alt={`${PLATFORM_NAMES[reference.platform]}実画面ヘッダー`} draggable={false}/> : <div className="social-screen-missing">実画面ヘッダーは未登録です</div>}
       <div className="social-screen-feed">

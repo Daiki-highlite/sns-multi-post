@@ -4,6 +4,7 @@ const login=await fetch(`${origin}/signin-with-chatgpt?return_to=/`,{redirect:'m
 const cookie=login.headers.getSetCookie().map(s=>s.split(';')[0]).join('; ');
 async function api(path,method='GET',data){const response=await fetch(`${origin}/api/${path}`,{method,headers:{Origin:origin,Cookie:cookie,'Content-Type':'application/json'},body:data===undefined?undefined:JSON.stringify(data)});return {status:response.status,body:await response.json()};}
 const state=await api('state');assert.equal(state.status,200);assert.equal(state.body.connections.length,0,'Only test against an unconnected local environment');
+const destinations=Object.fromEntries(state.body.destinations.map(d=>[d.platform,`web:${d.url}`]));
 const ids=[];
 try{
  for(let i=0;i<2;i++){
@@ -13,9 +14,9 @@ try{
  }
  const ps=(await api('state')).body.posts.filter(p=>ids.includes(p.id));
  const options={entries:ps.map(p=>({id:p.id,revision:p.revision})),platforms:['x','linkedin','facebook'],dateMode:'shift',startDate:'2027-03-01',imageMode:'text',mediaIds:[]};
- const refused=await api('posts/bulk','POST',{options,mode:'approve',destinations:{}});assert.equal(refused.status,400);
+ const refused=await api('posts/bulk','POST',{options,mode:'approve',destinations});assert.equal(refused.status,400);
  assert.ok((await api('state')).body.posts.filter(p=>ids.includes(p.id)).every(p=>p.approvedVersion===null));
- const result=await api('posts/bulk','POST',{options,mode:'approve',allowIncomplete:true,destinations:{}});assert.equal(result.status,200);assert.equal(result.body.approved,1);assert.equal(result.body.drafts,1);assert.equal(result.body.skipped.length,0);
+ const result=await api('posts/bulk','POST',{options,mode:'approve',allowIncomplete:true,destinations});assert.equal(result.status,200);assert.equal(result.body.approved,1);assert.equal(result.body.drafts,1);assert.equal(result.body.skipped.length,0);
  const saved=(await api('state')).body.posts.filter(p=>ids.includes(p.id));
  assert.ok(saved.every(p=>p.date==='2027-03-01'&&!p.needsImage));assert.equal(saved.flatMap(p=>p.targets).length,3);
  const stale=await api('posts/bulk','POST',{options,mode:'draft'});assert.equal(stale.status,200);assert.equal(stale.body.saved,0);assert.equal(stale.body.skipped.length,2);
