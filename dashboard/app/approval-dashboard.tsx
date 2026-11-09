@@ -26,14 +26,15 @@ function approvalIssue(post: Post) {
   } catch (error) { return (error as Error).message; }
 }
 
-export default function ApprovalDashboard({ data, busy, onApprove, onUndo, onSave }: {
+export default function ApprovalDashboard({ data, busy, onApprove, onUndo, onSave, onUpload }: {
   data: DashboardData; busy: boolean;
   onApprove: (post: Post, destinations: Destinations) => Promise<Post>;
   onUndo: (post: Post) => Promise<Post>;
   onSave: (post: Post, defer: boolean, note: string) => Promise<Post>;
+  onUpload: (file: File) => Promise<string>;
 }) {
   const [review, setReview] = useState<Review | null>(null);
-  const [heldMode, setHeldMode] = useState(false), [editorOpen,setEditorOpen] = useState(false);
+  const [heldMode, setHeldMode] = useState(false), [editorOpen,setEditorOpen] = useState(false), [editorIssue,setEditorIssue] = useState("");
   const [handled, setHandled] = useState<string[]>([]);
   const [previous, setPrevious] = useState<Previous | null>(null);
   const [saving, setSaving] = useState(false), [exit, setExit] = useState<SwipeAction | null>(null);
@@ -66,8 +67,9 @@ export default function ApprovalDashboard({ data, busy, onApprove, onUndo, onSav
   const locked = busy || saving;
   const decide = async (action: SwipeAction, keyboard = false) => {
     if (!review || taking.current || busy) return;
-    if (action === "defer") { setDrag(0); setError(""); setEditorOpen(true); return; }
-    if (action === "approve" && (stale || issue)) { setError(stale ? "原稿や投稿先が更新されました。最新の内容を確認してください。" : issue); setDrag(0); return; }
+    if (action === "defer") { setDrag(0); setError(""); setEditorIssue(""); setEditorOpen(true); return; }
+    if (action === "approve" && stale) { setError("原稿や投稿先が更新されました。最新の内容を確認してください。"); setDrag(0); return; }
+    if (action === "approve" && issue) { setDrag(0); setError(""); setEditorIssue(issue); setEditorOpen(true); return; }
     taking.current = true; setSaving(true); setExit(action); setError(""); setNotice("");
     try {
       const result = action === "approve" ? await onApprove(review.post, review.destinations) : undefined;
@@ -129,7 +131,7 @@ export default function ApprovalDashboard({ data, busy, onApprove, onUndo, onSav
           {Math.abs(drag) > 30 && <div className={`swipe-stamp ${drag > 0 ? "approve" : "defer"}`} aria-hidden="true">{drag > 0 ? "承認" : "あとで"}</div>}
           <header className="swipe-card-heading"><span>{review.post.category}</span><h3>{review.post.title}</h3><p><Clock3 size={14} /><time dateTime={review.post.plannedAt}>{dateLabel(review.post.date)} {review.post.time}</time><small>日本時間</small></p></header>
           <PlatformMobilePreview post={review.post} connections={review.connections} intended={review.intended} references={data.previewReferences || []} browserAgent={data.deliveryMode!=="api"} />
-          <div className="swipe-card-note">
+          <div className="swipe-card-note" id={review ? `approval-note-${review.post.id}` : undefined}>
             {review.post.reviewHold && <p className="review-hold-note">保留メモ：{review.post.reviewHold.note || "メモなし"}</p>}
             {stale ? <div className="swipe-issue"><AlertCircle size={16} /><span>原稿や投稿先が更新されました。</span><button disabled={locked} onClick={() => { const latest = data.posts.find(post => post.id === review.post.id); setReview(latest && statusOf(latest) === "review" ? snapshot(latest) : null); setError(""); }}>最新を確認</button></div> : issue ? <div className="swipe-issue"><AlertCircle size={16} /><span>{issue}<small>あとでを押すと、その場で本文・日時を修正できます。</small></span></div> : <p>✓で、この原稿・投稿先・日時を承認します。</p>}
             {data.deliveryMode!=="api" ? <p className="swipe-connection-note">承認後、AIエージェントがSNS画面で投稿します。実行はADMINから。</p> : (!data.schedulerReady || review.post.platforms.some(platform => !review.destinations[platform])) && <p className="swipe-connection-note">SNS・予約実行は設定待ちです。接続後に再承認してください。</p>}
@@ -140,10 +142,10 @@ export default function ApprovalDashboard({ data, busy, onApprove, onUndo, onSav
       <div className="swipe-controls" aria-label="カードの操作">
         <div><button className="swipe-control undo" disabled={locked || !previous} aria-label="ひとつ前の操作を取り消す" title="ひとつ前の操作を取り消す" onClick={undo}><RotateCcw size={21} /></button><span>ひとつ戻る</span></div>
         <div><button className="swipe-control defer" disabled={locked || !review} aria-label="この投稿を修正または保留する" title="修正または保留" onClick={() => void decide("defer")}><X size={29} /></button><span>あとで</span></div>
-        <div><button className="swipe-control approve" disabled={locked || !review || stale || !!issue} aria-label="この投稿を承認して次へ" title={issue || (stale ? "最新の原稿を確認してください" : "承認して次へ")} onClick={() => void decide("approve")}><Check size={32} /></button><span>承認</span></div>
+        <div><button className="swipe-control approve" disabled={locked || !review} aria-label="この投稿を承認して次へ" aria-describedby={review ? `approval-note-${review.post.id}` : undefined} title={issue || (stale ? "最新の原稿を確認してください" : "承認して次へ")} onClick={() => void decide("approve")}><Check size={32} /></button><span>承認</span></div>
       </div>
     </div>
-    {editorOpen && review && <QuickReviewEditor key={keyOf(review.post)} post={review.post} onClose={()=>setEditorOpen(false)} onSave={async(draft,defer,note,approve)=>{
+    {editorOpen && review && <QuickReviewEditor key={keyOf(review.post)} post={review.post} media={data.media} onUpload={onUpload} initialIssue={editorIssue} onClose={()=>setEditorOpen(false)} onSave={async(draft,defer,note,approve)=>{
       if(taking.current || busy) return;
       if(stale) throw new Error("別の人が更新しました。画面を閉じて最新の原稿を確認してください。入力内容はこの画面に残っています。");
       taking.current=true;setSaving(true);setError("");
@@ -153,7 +155,7 @@ export default function ApprovalDashboard({ data, busy, onApprove, onUndo, onSav
         const result=approve?await onApprove(saved,review.destinations):undefined;
         setHandled(keys=>[...keys,keyOf(review.post),keyOf(saved!)]);
         setPrevious({review,action:approve?"approve":"defer",approved:result,saved});
-        setNotice(approve?"修正した本文で承認しました":"修正した本文と保留メモを共有保存しました");
+        setNotice(approve?"修正内容を保存して承認しました":"修正内容と保留メモを共有保存しました");
         setEditorOpen(false);setReview(null);
       } catch(failure) {
         if(saved){setEditorOpen(false);setReview(snapshot(saved));setError(`本文は保存済みです。承認は完了していません。${(failure as Error).message}`);}

@@ -16,6 +16,9 @@ const find=async()=>(await request("state")).data.posts.find(p=>p.id===id);
 let p=await find();let edited=await request(`posts/${id}`,"PATCH",{...p,title:"[動作検証] 承認の版管理",content:{x:["test"],linkedin:"test",facebook:"test"},needsImage:false});assert.equal(edited.status,200);
 assert.equal((await request(`posts/${id}`,"PATCH",{...p,title:"古い編集"})).status,409);
 p=await find();
+const requireImage=await request(`posts/${id}`,"PATCH",{...p,needsImage:true});assert.equal(requireImage.status,200);
+p=await find();const missingImage=await request(`posts/${id}/approve`,"POST",{revision:p.revision,destinations});assert.equal(missingImage.status,400);assert.match(missingImage.data.error,/画像/);
+const textOnly=await request(`posts/${id}`,"PATCH",{...p,needsImage:false,mediaIds:[]});assert.equal(textOnly.status,200);p=await find();
 const beforeCorrection=p;
 const corrected={x:["修正したX本文", "修正した続き"],linkedin:"修正したLinkedIn本文",facebook:"修正したFacebook本文"};
 assert.equal((await request(`posts/${id}`,"PATCH",{...p,content:corrected,defer:true,reviewNote:"画像の最終確認"})).status,200);
@@ -27,4 +30,4 @@ const invalidHold=await request(`posts/${id}`,"PATCH",{...p,defer:true,reviewNot
 const saved=await request(`posts/${id}`,"PATCH",{...p,title:"[動作検証] 編集で承認解除"});assert.equal(saved.status,200);p=await find();assert.equal(p.approvedVersion,null);assert.equal(p.targets.length,0);
 assert.equal((await request(`posts/${id}/approve`,"POST",{revision:p.revision,destinations:{x:"別の投稿先"}})).status,409);
 assert.equal((await request(`posts/${id}`,"DELETE",{revision:p.revision})).status,200);
-console.log("HTTP smoke: login, same-origin protection, scheduler authorization, concurrent approvals, immutable destinations, durable review notes, corrected publishing payload, edit invalidation, cleanup passed");
+console.log("HTTP smoke: login, same-origin protection, scheduler authorization, concurrent approvals, immutable destinations, durable review notes, explicit text-only approval after missing-image rejection, corrected publishing payload, edit invalidation, cleanup passed");
