@@ -1,17 +1,13 @@
 import assert from "node:assert/strict";
-const origin=process.env.TEST_ORIGIN||"http://127.0.0.1:5173";
-if(!["localhost","127.0.0.1"].includes(new URL(origin).hostname)) throw new Error("HTTP smoke tests only run against a disposable local environment");
-const login=await fetch(`${origin}/signin-with-chatgpt?return_to=/`,{redirect:"manual"});
-const cookie=login.headers.getSetCookie().map(s=>s.split(";")[0]).join("; ");
-const headers={Origin:origin,Cookie:cookie,"Content-Type":"application/json"};
-async function request(path,method="GET",body){const r=await fetch(`${origin}/api/${path}`,{method,headers,body:body===undefined?undefined:JSON.stringify(body)});return {status:r.status,data:await r.json()};}
+import {origin,headers,api,futureDate} from './support/api.mjs';
+async function request(...args){const r=await api(...args);return {status:r.status,data:r.body};}
 const initial=await request("state");assert.equal(initial.status,200);assert.equal(initial.data.connections.length,0,"Use an unconnected local test environment");
 assert.equal((await fetch(`${origin}/api/jobs/run`,{method:"POST"})).status,403);
-assert.equal((await fetch(`${origin}/api/posts`,{method:"POST",headers:{Cookie:cookie,"Content-Type":"application/json"},body:"{}"})).status,403);
+assert.equal((await fetch(`${origin}/api/posts`,{method:"POST",headers:{...headers,Origin:""},body:"{}"})).status,403);
 const destinations=Object.fromEntries(initial.data.destinations.map(d=>[d.platform,`web:${d.url}`]));
 const badReference=new FormData();badReference.set("platform","x");badReference.set("name","test");badReference.set("theme","dark");badReference.set("header",new Blob(["fake jpeg"],{type:"image/jpeg"}),"header.jpg");badReference.set("avatar",new Blob(["fake jpeg"],{type:"image/jpeg"}),"avatar.jpg");
-assert.equal((await fetch(`${origin}/api/preview-references`,{method:"POST",headers:{Origin:origin,Cookie:cookie},body:badReference})).status,400,"Reject disguised image uploads");
-const created=await request("posts","POST",{date:"2027-01-01",time:"10:00"});assert.equal(created.status,200);const id=created.data.id;
+assert.equal((await fetch(`${origin}/api/preview-references`,{method:"POST",headers:Object.fromEntries(Object.entries(headers).filter(([k])=>k!=="Content-Type")),body:badReference})).status,400,"Reject disguised image uploads");
+const created=await request("posts","POST",{date:futureDate(),time:"10:00"});assert.equal(created.status,200);const id=created.data.id;
 const find=async()=>(await request("state")).data.posts.find(p=>p.id===id);
 let p=await find();let edited=await request(`posts/${id}`,"PATCH",{...p,title:"[動作検証] 承認の版管理",content:{x:["test"],linkedin:"test",facebook:"test"},needsImage:false});assert.equal(edited.status,200);
 assert.equal((await request(`posts/${id}`,"PATCH",{...p,title:"古い編集"})).status,409);

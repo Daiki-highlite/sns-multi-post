@@ -1,16 +1,13 @@
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
 import {readFileSync} from 'node:fs';
-const origin=process.env.TEST_ORIGIN||'http://127.0.0.1:5173';
-if(!['localhost','127.0.0.1'].includes(new URL(origin).hostname))throw new Error('Only run in a disposable local environment');
-const login=await fetch(origin+'/signin-with-chatgpt?return_to=/',{redirect:'manual'}),cookie=login.headers.getSetCookie().map(s=>s.split(';')[0]).join('; ');
-async function api(path,method='GET',data){const r=await fetch(origin+'/api/'+path,{method,headers:{Origin:origin,Cookie:cookie,'Content-Type':'application/json'},body:data?JSON.stringify(data):undefined});return {status:r.status,body:await r.json()};}
+import {origin,api,futureDate} from './support/api.mjs';
 const initial=(await api('state')).body;assert.equal(initial.deliveryMode,'browser_agent');assert.equal(initial.connections.length,0);assert.ok(initial.destinations.find(d=>d.platform==='x'));
 const destinations=Object.fromEntries(initial.destinations.map(d=>[d.platform,`web:${d.url}`]));
 const schedulerSecret=readFileSync('.dev.vars','utf8').match(/^SCHEDULER_SECRET=(.+)$/m)?.[1].trim().replace(/^["']|["']$/g,'');
 assert.ok(schedulerSecret,'Local scheduler secret is required to verify API delivery stays disabled');
 const disabled=await fetch(origin+'/api/jobs/run',{method:'POST',headers:{Authorization:`Bearer ${schedulerSecret}`}});assert.equal(disabled.status,200);assert.equal((await disabled.json()).mode,'browser_agent','The API runner must not call SNS providers by default');
-const {id}=(await api('posts','POST',{date:'2027-01-01',time:'12:00'})).body;
+const {id}=(await api('posts','POST',{date:futureDate(),time:'12:00'})).body;
 assert.match(id,/^[a-f0-9-]{36}$/);
 function localSql(sql){execFileSync(process.execPath,['--import','./scripts/sites-env.mjs','./node_modules/wrangler/bin/wrangler.js','d1','execute','DB','--local','--config','dist/server/wrangler.json','--persist-to','.wrangler/state','--command',sql],{stdio:'pipe'});}
 const find=async()=>(await api('state')).body.posts.find(p=>p.id===id);

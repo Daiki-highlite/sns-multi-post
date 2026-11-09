@@ -14,7 +14,8 @@ export type BulkOptions = {
 };
 export type BulkEntry = { original: Post; draft: Post; errors: string[]; canSave: boolean };
 export function bulkPlan(posts: Post[], options: BulkOptions, now = Date.now()): BulkEntry[] {
-  if (!Array.isArray(options.entries) || !options.entries.length || options.entries.length > 300 || new Set(options.entries.map(p=>p.id)).size!==options.entries.length) throw new AppError("1〜300件の異なる投稿を選んでください。");
+  if(!options || typeof options!=="object")throw new AppError("一括登録の条件を指定してください。");
+  if (!Array.isArray(options.entries) || !options.entries.length || options.entries.length > 300 || options.entries.some(entry=>!entry || typeof entry.id!=="string" || typeof entry.revision!=="string") || new Set(options.entries.map(p=>p.id)).size!==options.entries.length) throw new AppError("1〜300件の異なる投稿を選んでください。");
   if (!Array.isArray(options.platforms) || !options.platforms.length || options.platforms.some(p=>!PLATFORMS.includes(p))) throw new AppError("投稿先を選んでください。");
   if (!["keep","shift"].includes(options.dateMode) || !["keep","text","shared"].includes(options.imageMode) || !Array.isArray(options.mediaIds) || options.mediaIds.length>4 || options.mediaIds.some(v=>typeof v!=="string")) throw new AppError("共通設定を確認してください。");
   const byId = new Map(posts.map(p=>[p.id,p]));

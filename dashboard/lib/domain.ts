@@ -5,14 +5,16 @@ export const PLATFORMS: Platform[] = ["x", "linkedin", "facebook"];
 export const PLATFORM_NAMES = { x: "X", linkedin: "LinkedIn", facebook: "Facebook" };
 export class AppError extends Error { status: number; constructor(message: string, status = 400) { super(message); this.status = status; } }
 export function plannedTime(date: string, time: string) {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) throw new AppError("日付と時刻を確認してください。");
+  if (typeof date !== "string" || typeof time !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) throw new AppError("日付と時刻を確認してください。");
   const parsed = new Date(`${date}T${time}:00+09:00`);
   if (!Number.isFinite(parsed.getTime()) || new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Tokyo" }).format(parsed) !== date) throw new AppError("存在する日付を指定してください。");
   return parsed.toISOString();
 }
 export function assertApprovable(post: Post, now = Date.now()) {
   if (!post.platforms.length || post.platforms.some(p => !PLATFORMS.includes(p))) throw new AppError("投稿先を選んでください。");
-  if (new Date(post.plannedAt).getTime() <= now) throw new AppError("公開日時をこれからの時刻に変更してください。");
+  const scheduled=Date.parse(post.plannedAt);
+  if(!Number.isFinite(scheduled)) throw new AppError("公開日時を正しく設定してください。");
+  if (scheduled <= now) throw new AppError("公開日時をこれからの時刻に変更してください。");
   if (post.needsImage && !post.mediaIds.length) throw new AppError("画像を登録するか「画像なし」に変更してください。");
   if (post.mediaIds.length > 4) throw new AppError("画像は4枚までです。");
   for (const platform of post.platforms) {
@@ -28,7 +30,8 @@ export function importedPosts(input: CalendarExport): Post[] {
   const now = new Date().toISOString();
   const used = new Set<string>();
   for (const tab of input.tabs) {
-    if (!tab.name || !Number.isInteger(tab.sheetId) || !Array.isArray(tab.rows) || tab.rows.length > 1500) throw new AppError("タブの形式を確認してください。");
+    if (!tab || typeof tab.name !== "string" || !tab.name || !Number.isInteger(tab.sheetId) || !Array.isArray(tab.rows) || tab.rows.length > 1500) throw new AppError("タブの形式を確認してください。");
+    if(tab.rows.some(row=>!Array.isArray(row) || row.some(cell=>cell!==null && typeof cell!=="string"))) throw new AppError("カレンダーの各行を配列にし、セルは文字列か空欄で指定してください。");
     const header = tab.rows[0] ?? [];
     const required = ["日付（JST）", "主テーマ", "投稿テーマ", "枝番", "X 本文", "LinkedIn 本文", "Facebook 本文", "投稿時刻（案）", "投稿ID"];
     if (required.some((h, i) => header[i] !== h)) throw new AppError(`「${tab.name}」の列名・順番が投稿カレンダーと異なります。`);

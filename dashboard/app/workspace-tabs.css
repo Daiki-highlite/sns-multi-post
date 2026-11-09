@@ -71,3 +71,6 @@
 .agent-receipt input:not([type=checkbox]),.agent-receipt select,.agent-receipt textarea { border:1px solid var(--hl-rule); padding:10px 12px; border-radius:8px; background:var(--hl-paper); font-size:13px; min-height:44px; width:100%; }
 .agent-receipt > .checkbox-label { display:flex; align-items:flex-start; gap:8px; line-height:1.8; }
 .agent-receipt .button { justify-self:start; }
+.agent-claim-action { display:grid; gap:12px; }
+.agent-claim-action > .checkbox-label { display:flex; align-items:flex-start; gap:8px; line-height:1.8; font-size:12px; }
+.agent-claim-action .button { justify-self:start; }

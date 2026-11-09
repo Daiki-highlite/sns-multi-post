@@ -14,7 +14,7 @@
 - `destination.url` の会社ページを開き、会社の投稿作成画面へ進む。個人としての投稿になっていないか、投稿主体の表示を確認する。
 - 本文・画像・公開範囲・リンクの扱いを確認する。SNSが生成したリンクカードと添付画像が競合し、承認内容と違って見える場合は止める。
 - 公開後、会社ページの投稿として表示されることを確認する。
-- 実際の投稿メニューから正式なURLを取得する。`/feed/update/urn:li:activity:…`、`/feed/update/urn:li:share:…` または `/posts/…-activity-…` 形式を記録する。会社ページのトップURLは公開証拠にならない。
+- 実際の投稿メニューから正式なURLを取得する。`/feed/update/urn:li:activity:…`、`/feed/update/urn:li:share:…` または `/posts/…-activity-…` 形式を記録する。URL内のコロンが `%3A` になった形式も利用できる。会社ページのトップURLは公開証拠にならない。
 
 ## Facebookページ
 

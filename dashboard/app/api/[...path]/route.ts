@@ -17,7 +17,7 @@ export const dynamic = "force-dynamic";
 async function body(request: Request) {
   if (Number(request.headers.get("content-length") || 0) > 5000000) throw new AppError("ファイルは5MB以内にしてください。", 413);
   const raw = await request.text(); if (raw.length > 5000000) throw new AppError("ファイルは5MB以内にしてください。", 413);
-  try { return JSON.parse(raw); } catch { throw new AppError("入力形式を確認してください。"); }
+  try { const value=JSON.parse(raw);if(!value || typeof value!=="object" || Array.isArray(value))throw new Error("object required");return value; } catch { throw new AppError("入力形式を確認してください。"); }
 }
 function insert(post: Post) { return database().prepare("INSERT INTO posts(id,source_key,document,revision,version,approved_version,planned_at,updated_at) VALUES(?,?,?,?,?,?,?,?)").bind(post.id, post.sourceKey, JSON.stringify(post), post.revision, post.version, post.approvedVersion, post.plannedAt, post.updatedAt); }
 async function importCalendar(data: CalendarExport, apply: boolean, overwrite: Record<string, string>, actor: string) {
@@ -107,7 +107,7 @@ async function api(request: Request) {
     let next: Post;
     if (action === "revoke") next = { ...old, approvedVersion: null, approvedBy: null, approvedAt: null, status: "review", revision: crypto.randomUUID(), updatedAt: new Date().toISOString() };
     else {
-      if (!input.title?.trim() || input.title.length > 200 || !Array.isArray(input.platforms) || input.platforms.some((p: Platform) => !PLATFORMS.includes(p)) || !input.content || !Array.isArray(input.content.x) || input.content.x.length > 10 || input.content.x.some((v: unknown) => typeof v !== "string") || typeof input.content.linkedin !== "string" || typeof input.content.facebook !== "string" || JSON.stringify(input.content).length > 200000 || !Array.isArray(input.mediaIds) || input.mediaIds.length > 4 || input.mediaIds.some((v: unknown) => typeof v !== "string")) throw new AppError("投稿内容の形式を確認してください。");
+      if (typeof input.title!=="string" || !input.title.trim() || input.title.length > 200 || !Array.isArray(input.platforms) || input.platforms.some((p: Platform) => !PLATFORMS.includes(p)) || !input.content || !Array.isArray(input.content.x) || input.content.x.length > 10 || input.content.x.some((v: unknown) => typeof v !== "string") || typeof input.content.linkedin !== "string" || typeof input.content.facebook !== "string" || JSON.stringify(input.content).length > 200000 || !Array.isArray(input.mediaIds) || input.mediaIds.length > 4 || input.mediaIds.some((v: unknown) => typeof v !== "string")) throw new AppError("投稿内容の形式を確認してください。");
       if (input.defer !== undefined && typeof input.defer !== "boolean") throw new AppError("保留の指定を確認してください。");
       if (input.reviewNote !== undefined && (typeof input.reviewNote !== "string" || input.reviewNote.length > 2000)) throw new AppError("保留メモは2,000文字以内にしてください。");
       next = { ...old, ...(input.defer !== undefined ? { reviewHold: input.defer ? { note: input.reviewNote || "", at: new Date().toISOString(), by: actor } : null } : {}), title: input.title.trim(), date: input.date, time: input.time, plannedAt: plannedTime(input.date, input.time), platforms: [...new Set<Platform>(input.platforms)], content: normalizeThreadContent(input.content), mediaIds: input.mediaIds, needsImage: input.needsImage === true, notes: String(input.notes ?? old.notes).slice(0, 20000), version: old.version + 1, revision: crypto.randomUUID(), approvedVersion: null, approvedBy: null, approvedAt: null, status: "review", updatedAt: new Date().toISOString() };
@@ -126,13 +126,16 @@ async function api(request: Request) {
     await activity("retried", actor, "失敗した送信を再試行に戻しました。"); return json({ queued: true });
   }
   if (path === "targets/resolve" && method === "POST") {
-    const input = await body(request), target = await database().prepare("SELECT platform,post_id FROM targets WHERE id=? AND state='unknown'").bind(input.id).first<{ platform: Platform; post_id: string }>();
-    if (!target) throw new AppError("確認が必要な投稿がありません。", 409);
-    if (input.published !== true || !input.remoteId || !input.url) throw new AppError("公開済みの投稿IDとURLを入力してください。");
-    const url = new URL(input.url), domains = { x: ["x.com", "twitter.com"], linkedin: ["www.linkedin.com", "linkedin.com"], facebook: ["www.facebook.com", "facebook.com"] };
-    if (url.protocol !== "https:" || !domains[target.platform].includes(url.hostname)) throw new AppError("対象SNSの投稿URLを指定してください。");
-    await database().prepare("UPDATE targets SET state='published',remote_id=?,url=?,error=NULL,updated_at=? WHERE id=? AND state='unknown'").bind(String(input.remoteId).slice(0, 200), url.href, new Date().toISOString(), input.id).run();
-    await activity("resolved", actor, "投稿先で公開結果を確認しました。", target.post_id); return json({ resolved: true });
+    const input=await body(request),posts=await allPosts(),post=posts.find(p=>p.targets?.some(t=>t.id===input.id)),target=post?.targets?.find(t=>t.id===input.id);
+    if(!post || !target || target.state!=="unknown")throw new AppError("確認が必要な投稿がありません。",409);
+    if(input.revision!==post.revision || post.approvedVersion!==target.version || post.version!==target.version)throw new AppError("承認した原稿が更新されました。再読み込みしてください。",409);
+    if(input.published!==true || input.accountConfirmed!==true)throw new AppError("SNS上の本文・画像・投稿主体を確認してください。");
+    const destination=post.approvedDestinations?.find(d=>d.platform===target.platform) || configuredDestinations().find(d=>d.platform===target.platform);
+    const evidence=publishedEvidence(target.platform,input.url,destination);
+    if(input.remoteId && input.remoteId!==evidence.id)throw new AppError("投稿IDと投稿URLが一致しません。");
+    const result=await database().prepare("UPDATE targets SET state='published',remote_id=?,url=?,error=NULL,updated_at=? WHERE id=? AND state='unknown' AND EXISTS(SELECT 1 FROM posts WHERE id=targets.post_id AND revision=? AND approved_version=targets.version AND version=targets.version)").bind(evidence.id,evidence.url,new Date().toISOString(),target.id,post.revision).run();
+    if(!result.meta.changes)throw new AppError("公開結果が更新されました。再読み込みしてください。",409);
+    await activity("resolved",actor,`投稿先で公開結果を確認しました。 ${evidence.url}`,post.id);return json({resolved:true});
   }
   if (path === "connections" && method === "POST") {
     const input = await body(request); if (!PLATFORMS.includes(input.platform)) throw new AppError("SNSを選んでください。");
@@ -184,10 +187,10 @@ async function api(request: Request) {
         throw new AppError("作業が中断された可能性があります。再投稿せず、SNS上の公開結果を確認してください。",409);
       }
       const meta=await metadata(),job=agentJob(post,target,configuredDestinations(),meta.media,new URL(request.url).origin);
-      if(!job.canClaim)throw new AppError(job.blockers.join(" "),409);
+      if(!job.canClaim && !(job.canConfirmLate && input.allowLate===true))throw new AppError(job.blockers.join(" "),409);
       const result=await db.prepare("UPDATE targets SET state='sending',claimed_at=?,attempts=attempts+1,error=NULL,updated_at=? WHERE id=? AND state IN ('queued','blocked') AND EXISTS(SELECT 1 FROM posts WHERE id=targets.post_id AND revision=? AND version=targets.version AND approved_version=targets.version)").bind(now,now,id,post.revision).run();
       if(!result.meta.changes)throw new AppError("別の担当が作業を開始しました。再読み込みしてください。",409);
-      await activity("agent-claimed",actor,`${target.platform}のSNS画面での投稿作業を開始しました。`,post.id);
+      await activity("agent-claimed",actor,`${target.platform}のSNS画面での投稿作業を開始しました。${job.requiresLateConfirmation?" 予定経過と本文中の期限を確認して実行を指定しました。":""}`,post.id);
       return json({claimed:true,job:{...job,state:"sending",claim:now,canClaim:false}});
     }
     if(post.approvedDeliveryMode!=="browser_agent" || !["sending","unknown"].includes(target.state) || !input.claim || input.claim!==target.claimedAt)throw new AppError("作業の引き受け状態が変わりました。再読み込みしてください。",409);

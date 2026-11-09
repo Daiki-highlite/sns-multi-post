@@ -86,13 +86,12 @@ npm run dev
 npm run typecheck
 npm test
 npm run build
-# 未接続の使い捨てローカル環境でdevサーバーを起動して実行
-node tests/http-smoke.mjs
-node tests/bulk-http.mjs
-node tests/agent-http.mjs
+npm run test:uat
 ```
 
-日時・CSV・枝番・承認版と投稿先の固定に加え、ブラウザー方式の実行条件と公開URLを検証します。HTTP検証は同時承認、修正本文の保存、引き受け競合、作業中の編集防止、正式な投稿URLと確認チェック、Xの親子関係、結果不明の再送拒否を確認します。実SNSへのテスト投稿は行いません。
+`test:uat` はビルド済みWorkerを独立した一時フォルダー・DB・画像領域で起動し、4つのHTTPスイートを実行して終了します。通常のローカル原稿や設定は変更しません。合成した投稿先のみを使い、SNSへ公開しません。初回に別の開発サーバーを起動する必要はありません。
+
+型・単体・ビルド・HTTP UATをGitHub CIでも実行します。承認版、同時操作、画像保存、連投の復旧、結果不明と再試行、公開URL、取り込み・一括承認を確認します。PC / スマートフォンと実SNSの確認結果は [UAT結果](docs/uat/RESULTS.md)、再現した不具合と修正内容は [不具合台帳](docs/uat/BUGS.md) を参照してください。実SNSのテスト公開は利用者の個別許可を得た手動UATのみです。
 
 ## 実データとAPI方式の扱い
 
