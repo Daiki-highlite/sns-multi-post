@@ -89,7 +89,7 @@
 .swipe-copy { flex:1; min-height:0; max-height:none; }
 .swipe-complete { flex:1; min-height:160px; }
 @media(max-width:650px) { .approval-home:has(.swipe-dashboard) { height:calc(100dvh - 64px); } }
-@media(max-height:700px) {
+@media(min-width:651px) and (max-height:850px), (max-width:650px) and (max-height:760px) {
   .approval-home:has(.swipe-dashboard) { height:auto; min-height:calc(100dvh - 72px); }
   .approval-home:has(.swipe-dashboard) .today-label,.approval-home:has(.swipe-dashboard) .page-heading p { display:none; }
   .approval-home:has(.swipe-dashboard) .page-heading { margin-bottom:8px; }

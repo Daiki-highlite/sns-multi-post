@@ -18,6 +18,7 @@ export type Post = {
 };
 export type Media = { id: string; name: string; mime: string; size: number; createdAt: string };
 export type Connection = { platform: Platform; label: string; accountId: string; configured: boolean; verifiedAt?: string; error?: string };
+export type Destination = { platform: Platform; url: string; label: string; accountId?: string; username?: string };
 export type CalendarExport = { spreadsheetId: string; tabs: { name: string; sheetId: number; rows: (string | null)[][] }[] };
 export type Activity = { id: string; postId: string | null; action: string; actor: string; detail: string; createdAt: string };
-export type DashboardData = { posts: Post[]; media: Media[]; connections: Connection[]; activities: Activity[]; settings: { lastImportAt?: string; importedCount?: number; spreadsheetId?: string; tabs?: { name: string; sheetId: number }[] }; user: { displayName: string; email: string }; sheetsReady: boolean; schedulerReady: boolean };
+export type DashboardData = { posts: Post[]; media: Media[]; connections: Connection[]; destinations: Destination[]; activities: Activity[]; settings: { lastImportAt?: string; importedCount?: number; spreadsheetId?: string; tabs?: { name: string; sheetId: number }[] }; user: { displayName: string; email: string }; sheetsReady: boolean; schedulerReady: boolean };

@@ -3,12 +3,15 @@ import type { Platform, Target } from "./types";
 import { AppError } from "./domain";
 import { database } from "./store";
 import { runtime, unseal } from "./security";
+import { configuredDestinations } from "./destination-settings";
+import { assertDestinationMatches } from "./destinations";
 
 type Auth = { token: string; accountId: string; label: string };
 export class SendError extends Error { uncertain: boolean; blocked: boolean; constructor(message: string, uncertain = false, blocked = false) { super(message); this.uncertain = uncertain; this.blocked = blocked; } }
 export async function credential(platform: Platform): Promise<Auth> {
   const row = await database().prepare("SELECT encrypted_token,account_id,label FROM connections WHERE platform=?").bind(platform).first<{ encrypted_token: string; account_id: string; label: string }>();
   if (!row) throw new SendError("SNSの接続設定が必要です。", false, true);
+  try { assertDestinationMatches(configuredDestinations().find(d=>d.platform===platform),{accountId:row.account_id,username:platform==="x"?row.label.replace(/^@/,""):undefined}); } catch(error) { throw new SendError((error as Error).message,false,true); }
   return { token: await unseal(row.encrypted_token), accountId: row.account_id, label: row.label };
 }
 function linkedHeaders(token: string) { return { Authorization: `Bearer ${token}`, "LinkedIn-Version": runtime("LINKEDIN_API_VERSION") || "202606", "X-Restli-Protocol-Version": "2.0.0", "Content-Type": "application/json" }; }
@@ -22,13 +25,26 @@ async function call(url: string, options: RequestInit, publishing = false): Prom
 }
 export async function verifyConnection(platform: Platform, token: string, requestedAccountId: string) {
   if (token.length < 10 || token.length > 12000) throw new AppError("接続情報を確認してください。");
-  if (platform === "x") { const { data } = await call("https://api.x.com/2/users/me", { headers: { Authorization: `Bearer ${token}` } }); if (!data.data?.id) throw new AppError("Xのアカウントを確認できませんでした。"); return { accountId: data.data.id, label: `@${data.data.username}` }; }
+  const expected=configuredDestinations().find(destination=>destination.platform===platform);
+  if (platform === "x") {
+    const { data } = await call("https://api.x.com/2/users/me", { headers: { Authorization: `Bearer ${token}` } });
+    if (!data.data?.id || !data.data?.username) throw new AppError("Xのアカウントを確認できませんでした。");
+    assertDestinationMatches(expected,{accountId:String(data.data.id),username:data.data.username});
+    return { accountId: String(data.data.id), label: `@${data.data.username}` };
+  }
+  requestedAccountId=requestedAccountId.trim() || expected?.accountId || "";
   if (!/^\d+$/.test(requestedAccountId)) throw new AppError("数字のページIDを指定してください。");
-  if (platform === "linkedin") { const { data } = await call(`https://api.linkedin.com/rest/organizations/${requestedAccountId}`, { headers: linkedHeaders(token) }); return { accountId: requestedAccountId, label: data.localizedName || data.vanityName || "LinkedIn会社ページ" }; }
+  assertDestinationMatches(expected,{accountId:requestedAccountId});
+  if (platform === "linkedin") {
+    const { data } = await call(`https://api.linkedin.com/rest/organizations/${requestedAccountId}`, { headers: linkedHeaders(token) });
+    if(String(data.id)!==requestedAccountId) throw new AppError("LinkedInの会社ページを確認できませんでした。");
+    return { accountId: requestedAccountId, label: data.localizedName || data.vanityName || "LinkedIn会社ページ" };
+  }
   const { data } = await call(`https://graph.facebook.com/v27.0/me?fields=id,name`, { headers: { Authorization: `Bearer ${token}` } });
   if (String(data.id) !== requestedAccountId) throw new AppError("指定したFacebookページのページ用トークンを登録してください。");
   return { accountId: requestedAccountId, label: data.name || "Facebookページ" };
 }
+
 async function asset(id: string) {
   if (!env.BUCKET) throw new SendError("画像保管の初期設定が必要です。", false, true);
   const [row, object] = await Promise.all([database().prepare("SELECT name,mime FROM media WHERE id=?").bind(id).first<{ name: string; mime: string }>(), env.BUCKET.get(id)]);

@@ -63,7 +63,9 @@ npm run dev
 
 本番はSitesの招待制アクセスと `ALLOWED_USER_EMAILS` の両方で制限します。2人分のメールアドレスだけを設定してください。GitHubを共有するだけでは、本番アプリの閲覧権限や共有データは渡りません。
 
-Sitesの環境変数に `CREDENTIAL_ENCRYPTION_KEY` と `SCHEDULER_SECRET` をシークレットとして登録します。SNSの接続情報はダッシュボードの「設定・SNS連携」で登録します。登録時に対象アカウントを読み取って確認し、暗号化してD1に保管します。トークンを画面へ再表示するAPIはありません。
+Sitesの環境変数に `CREDENTIAL_ENCRYPTION_KEY` と `SCHEDULER_SECRET` をシークレットとして登録します。投稿先は `DESTINATION_X_URL`、`DESTINATION_LINKEDIN_URL`、`DESTINATION_FACEBOOK_URL` に設定します。設定画面と原稿カードに指定先を表示し、ページIDは自動入力します。接続時にXのユーザー名・会社/ページIDを照合し、送信時も保存した接続先が指定先と一致していることを確認します。URLの指定だけではSNSへの接続完了になりません。
+
+SNSの接続情報はダッシュボードの「設定・SNS連携」で登録します。登録時に対象アカウントを読み取って確認し、暗号化してD1に保管します。トークンを画面へ再表示するAPIはありません。
 
 | SNS | 登録するもの |
 | --- | --- |

@@ -1,0 +1,10 @@
+.destination-summary-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:24px; padding:8px 0 16px; }
+.destination-summary-grid > div { display:grid; gap:12px; min-width:0; }
+.destination-summary-grid strong { font-size:14px; font-weight:500; }
+.destination-summary-grid a { display:inline-flex; align-items:center; gap:8px; font-size:13px; color:var(--hl-deep); min-height:48px; overflow-wrap:anywhere; }
+.destination-summary-grid a > svg { flex-shrink:0; }
+.destination-summary-grid span { font-size:11px; color:var(--hl-muted); }
+.approval-account a { color:var(--hl-deep); text-decoration:underline; text-underline-offset:3px; }
+.bulk-connect-grid fieldset > .intended-account { display:block; color:var(--hl-deep); margin-top:8px; overflow-wrap:anywhere; }
+.bulk-connect-grid input:read-only,.connection-form input:read-only { background:var(--hl-paper); color:var(--hl-muted); }
+@media(max-width:850px) { .destination-summary-grid { grid-template-columns:1fr; gap:0; } .destination-summary-grid > div { border-bottom:1px solid var(--line); padding:16px 0; gap:4px; } .destination-summary-grid > div:last-child { border-bottom:0; } }

@@ -4,6 +4,7 @@ import { member, service, failure, json, runtime, seal } from "@/lib/security";
 import { activity, allPosts, database, getPost, metadata, setting } from "@/lib/store";
 import { AppError, assertApprovable, importedPosts, makeTargetPayloads, plannedTime, PLATFORMS } from "@/lib/domain";
 import { verifyConnection } from "@/lib/providers";
+import { configuredDestinations } from "@/lib/destination-settings";
 import { readCalendar } from "@/lib/sheets";
 import { runDueJobs } from "@/lib/jobs";
 import type { CalendarExport, Platform, Post } from "@/lib/types";
@@ -37,7 +38,7 @@ async function api(request: Request) {
   if (path === "jobs/run" && method === "POST") { service(request); return json(await runDueJobs()); }
   if (path === "bootstrap" && method === "POST") { service(request); const n = await database().prepare("SELECT count(*) AS n FROM posts").first<{ n: number }>(); if (n?.n) throw new AppError("初回取り込みは完了しています。", 409); return json(await importCalendar(await body(request), true, {}, "初回取り込み")); }
   const user = await member(request), actor = user.displayName;
-  if (path === "state" && method === "GET") return json({ posts: await allPosts(), ...await metadata(), user: { displayName: actor, email: user.email }, sheetsReady: !!runtime("GOOGLE_SERVICE_ACCOUNT_EMAIL") && !!runtime("GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY"), schedulerReady: runtime("SCHEDULER_ENABLED") === "true" });
+  if (path === "state" && method === "GET") return json({ posts: await allPosts(), ...await metadata(), destinations:configuredDestinations(), user: { displayName: actor, email: user.email }, sheetsReady: !!runtime("GOOGLE_SERVICE_ACCOUNT_EMAIL") && !!runtime("GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY"), schedulerReady: runtime("SCHEDULER_ENABLED") === "true" });
   if (path === "import" && method === "POST") { const input = await body(request); return json(await importCalendar(input.data, input.apply === true, input.overwrite ?? {}, actor)); }
   if (path === "sheets/read" && method === "POST") { const input = await body(request); return json(await importCalendar(await readCalendar(input.spreadsheetId, input.tabs), false, {}, actor)); }
   if (path === "posts/bulk" && method === "POST") {
