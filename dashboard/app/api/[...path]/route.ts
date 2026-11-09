@@ -92,7 +92,7 @@ async function api(request: Request) {
       const connections = await db.prepare("SELECT platform,account_id FROM connections").all<{platform:Platform;account_id:string}>();
       const accounts = Object.fromEntries(connections.results.map(c=>[c.platform,c.account_id]));
       if (old.platforms.some(p=>(input.destinations?.[p]||"")!==(accounts[p]||""))) throw new AppError("投稿先の接続が更新されました。再読み込みして確認してください。",409);
-      const instant = new Date(), next: Post = { ...old, ...(input.immediate===true?{plannedAt:instant.toISOString(),date:new Intl.DateTimeFormat("sv-SE",{timeZone:"Asia/Tokyo"}).format(instant),time:new Intl.DateTimeFormat("en-GB",{timeZone:"Asia/Tokyo",hour:"2-digit",minute:"2-digit"}).format(instant)}:{}), approvedVersion: old.version, approvedBy: actor, approvedAt: instant.toISOString(), status: "approved", revision: crypto.randomUUID(), updatedAt: instant.toISOString() };
+      const instant = new Date(), next: Post = { ...old, ...(input.immediate===true?{plannedAt:instant.toISOString(),date:new Intl.DateTimeFormat("sv-SE",{timeZone:"Asia/Tokyo"}).format(instant),time:new Intl.DateTimeFormat("en-GB",{timeZone:"Asia/Tokyo",hour:"2-digit",minute:"2-digit"}).format(instant)}:{}), approvedVersion: old.version, approvedBy: actor, approvedAt: instant.toISOString(), status: "approved", reviewHold: null, revision: crypto.randomUUID(), updatedAt: instant.toISOString() };
       const stmts = [db.prepare("UPDATE posts SET document=?,revision=?,approved_version=?,planned_at=?,updated_at=? WHERE id=? AND revision=? AND NOT EXISTS(SELECT 1 FROM targets WHERE post_id=? AND state IN ('sending','published','unknown'))").bind(JSON.stringify(next), next.revision, next.version, next.plannedAt, next.updatedAt, id, old.revision, id)];
       for (const t of makeTargetPayloads(next,accounts)) stmts.push(db.prepare("INSERT INTO targets(id,post_id,version,platform,sequence,parent_id,state,scheduled_at,payload,attempts,updated_at) SELECT ?,?,?,?,?,?,'queued',?,?,0,? WHERE EXISTS(SELECT 1 FROM posts WHERE id=? AND revision=?) ON CONFLICT(id) DO NOTHING").bind(t.id, id, old.version, t.platform, t.sequence, t.parentId, next.plannedAt, JSON.stringify(t.payload), next.updatedAt, id, next.revision));
       const results = await db.batch(stmts); if (!results[0].meta.changes) throw new AppError("投稿が更新されました。再読み込みしてください。", 409);
@@ -102,7 +102,9 @@ async function api(request: Request) {
     if (action === "revoke") next = { ...old, approvedVersion: null, approvedBy: null, approvedAt: null, status: "review", revision: crypto.randomUUID(), updatedAt: new Date().toISOString() };
     else {
       if (!input.title?.trim() || input.title.length > 200 || !Array.isArray(input.platforms) || input.platforms.some((p: Platform) => !PLATFORMS.includes(p)) || !input.content || !Array.isArray(input.content.x) || input.content.x.length > 10 || input.content.x.some((v: unknown) => typeof v !== "string") || typeof input.content.linkedin !== "string" || typeof input.content.facebook !== "string" || JSON.stringify(input.content).length > 200000 || !Array.isArray(input.mediaIds) || input.mediaIds.length > 4 || input.mediaIds.some((v: unknown) => typeof v !== "string")) throw new AppError("投稿内容の形式を確認してください。");
-      next = { ...old, title: input.title.trim(), date: input.date, time: input.time, plannedAt: plannedTime(input.date, input.time), platforms: [...new Set<Platform>(input.platforms)], content: input.content, mediaIds: input.mediaIds, needsImage: input.needsImage === true, notes: String(input.notes ?? old.notes).slice(0, 20000), version: old.version + 1, revision: crypto.randomUUID(), approvedVersion: null, approvedBy: null, approvedAt: null, status: "review", updatedAt: new Date().toISOString() };
+      if (input.defer !== undefined && typeof input.defer !== "boolean") throw new AppError("保留の指定を確認してください。");
+      if (input.reviewNote !== undefined && (typeof input.reviewNote !== "string" || input.reviewNote.length > 2000)) throw new AppError("保留メモは2,000文字以内にしてください。");
+      next = { ...old, ...(input.defer !== undefined ? { reviewHold: input.defer ? { note: input.reviewNote || "", at: new Date().toISOString(), by: actor } : null } : {}), title: input.title.trim(), date: input.date, time: input.time, plannedAt: plannedTime(input.date, input.time), platforms: [...new Set<Platform>(input.platforms)], content: input.content, mediaIds: input.mediaIds, needsImage: input.needsImage === true, notes: String(input.notes ?? old.notes).slice(0, 20000), version: old.version + 1, revision: crypto.randomUUID(), approvedVersion: null, approvedBy: null, approvedAt: null, status: "review", updatedAt: new Date().toISOString() };
     }
     const results = await db.batch([
       db.prepare("UPDATE posts SET document=?,revision=?,version=?,approved_version=NULL,planned_at=?,updated_at=? WHERE id=? AND revision=? AND NOT EXISTS(SELECT 1 FROM targets WHERE post_id=? AND state IN ('sending','published','unknown'))").bind(JSON.stringify(next), next.revision, next.version, next.plannedAt, next.updatedAt, id, old.revision, id),
@@ -135,6 +137,29 @@ async function api(request: Request) {
   if (path.startsWith("connections/") && method === "DELETE") {
     const platform = path.split("/")[1]; if (!PLATFORMS.includes(platform as Platform)) throw new AppError("SNSを選んでください。");
     await database().prepare("DELETE FROM connections WHERE platform=?").bind(platform).run(); await activity("disconnected", actor, `${platform}の接続を解除しました。`); return json({ disconnected: true });
+  }
+  if (path === "preview-references" && method === "POST") {
+    if (!env.BUCKET) throw new AppError("画像保管の初期設定が必要です。",503);
+    if (Number(request.headers.get("content-length") || 0) > 6291456) throw new AppError("参照画像は合計6MB以内にしてください。",413);
+    const form = await request.formData(), platform = String(form.get("platform")), name = String(form.get("name") || "").trim(), theme = String(form.get("theme"));
+    if (!PLATFORMS.includes(platform as Platform) || !name || name.length > 100 || !["dark","light"].includes(theme)) throw new AppError("SNS・表示名・背景色を確認してください。");
+    const files = [form.get("header"),form.get("avatar")];
+    const validated = await Promise.all(files.map(async file => {
+      if (!(file instanceof File) || !file.size || file.size > 3000000 || !["image/jpeg","image/png"].includes(file.type)) throw new AppError("ヘッダーとアイコンを各3MB以内のJPEG・PNGで指定してください。");
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      if (!(file.type === "image/jpeg" ? bytes[0] === 255 && bytes[1] === 216 && bytes[2] === 255 : [137,80,78,71,13,10,26,10].every((n,i) => bytes[i] === n))) throw new AppError("画像ファイルの形式を確認してください。");
+      return { bytes, type:file.type, id:crypto.randomUUID() };
+    }));
+    for (const file of validated) await env.BUCKET.put(`preview/${file.id}`,file.bytes,{httpMetadata:{contentType:file.type}});
+    const reference = { platform, name, theme, headerId:validated[0].id, avatarId:validated[1].id, capturedAt:new Date().toISOString() };
+    await setting(`previewReference:${platform}`,reference);
+    await activity("preview-updated",actor,`${platform}の実画面参照を更新しました。`);
+    return json({saved:true,reference});
+  }
+  if (path.startsWith("preview-assets/") && method === "GET") {
+    const id = path.split("/")[1]; if (!/^[a-f0-9-]{36}$/.test(id)) throw new AppError("画像が見つかりません。",404);
+    const object = await env.BUCKET?.get(`preview/${id}`); if (!object) throw new AppError("画像が見つかりません。",404);
+    return new Response(object.body,{headers:{"Content-Type":object.httpMetadata?.contentType || "image/jpeg","Cache-Control":"private, no-store","X-Content-Type-Options":"nosniff"}});
   }
   if (path === "media" && method === "POST") {
     if (!env.BUCKET) throw new AppError("画像保管の初期設定が必要です。", 503);
