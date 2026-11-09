@@ -1,7 +1,7 @@
-import { env } from "cloudflare:workers";
+import { runtimeBindings } from "./runtime-bindings";
 import type { Activity, Connection, Media, Post, Target, PreviewReference } from "./types";
 import { AppError } from "./domain";
-export function database() { if (!env.DB) throw new AppError("共有データベースの初期設定が必要です。", 503); return env.DB; }
+export function database() { const env = runtimeBindings(); if (!env.DB) throw new AppError("共有データベースの初期設定が必要です。", 503); return env.DB; }
 export async function allPosts(): Promise<Post[]> {
   const db = database();
   const [posts, targets] = await Promise.all([db.prepare("SELECT document FROM posts ORDER BY planned_at").all<{ document: string }>(), db.prepare("SELECT * FROM targets ORDER BY sequence").all<Record<string, unknown>>()]);

@@ -1,4 +1,4 @@
-import { env } from "cloudflare:workers";
+import { runtimeBindings } from "@/lib/runtime-bindings";
 import twitterText from "twitter-text";
 import { member, service, failure, json, runtime, seal } from "@/lib/security";
 import { activity, allPosts, database, getPost, metadata, setting } from "@/lib/store";
@@ -39,6 +39,7 @@ async function importCalendar(data: CalendarExport, apply: boolean, overwrite: R
 }
 async function api(request: Request) {
  try {
+  const env = runtimeBindings();
   const path = new URL(request.url).pathname.replace(/^\/api\//, ""), method = request.method;
   if (path === "jobs/run" && method === "POST") { service(request); return json(await runDueJobs()); }
   if (path === "bootstrap" && method === "POST") { service(request); const n = await database().prepare("SELECT count(*) AS n FROM posts").first<{ n: number }>(); if (n?.n) throw new AppError("初回取り込みは完了しています。", 409); return json(await importCalendar(await body(request), true, {}, "初回取り込み")); }

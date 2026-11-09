@@ -2,6 +2,10 @@ import assert from "node:assert/strict";
 import {origin,headers,api,futureDate} from './support/api.mjs';
 async function request(...args){const r=await api(...args);return {status:r.status,data:r.body};}
 const initial=await request("state");assert.equal(initial.status,200);assert.equal(initial.data.connections.length,0,"Use an unconnected local test environment");
+// Exercise the R2 binding on the first authenticated write, before other routes warm up.
+const coldImage=new FormData();const coldBytes=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl6Z1sAAAAASUVORK5CYII=','base64');coldImage.set('file',new Blob([coldBytes],{type:'image/png'}),'cold-start.png');
+const coldResponse=await fetch(`${origin}/api/media`,{method:'POST',headers:Object.fromEntries(Object.entries(headers).filter(([k])=>k!=='Content-Type')),body:coldImage});assert.equal(coldResponse.status,200,'Image binding must work on the first authenticated write');
+const coldId=(await coldResponse.json()).id,coldRead=await fetch(`${origin}/api/media/${coldId}`,{headers});assert.equal(coldRead.status,200);assert.deepEqual(Buffer.from(await coldRead.arrayBuffer()),coldBytes);
 assert.equal((await fetch(`${origin}/api/jobs/run`,{method:"POST"})).status,403);
 assert.equal((await fetch(`${origin}/api/posts`,{method:"POST",headers:{...headers,Origin:""},body:"{}"})).status,403);
 const destinations=Object.fromEntries(initial.data.destinations.map(d=>[d.platform,`web:${d.url}`]));

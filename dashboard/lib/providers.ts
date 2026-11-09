@@ -1,4 +1,4 @@
-import { env } from "cloudflare:workers";
+import { runtimeBindings } from "./runtime-bindings";
 import type { Platform, Target } from "./types";
 import { AppError } from "./domain";
 import { database } from "./store";
@@ -46,6 +46,7 @@ export async function verifyConnection(platform: Platform, token: string, reques
 }
 
 async function asset(id: string) {
+  const env = runtimeBindings();
   if (!env.BUCKET) throw new SendError("画像保管の初期設定が必要です。", false, true);
   const [row, object] = await Promise.all([database().prepare("SELECT name,mime FROM media WHERE id=?").bind(id).first<{ name: string; mime: string }>(), env.BUCKET.get(id)]);
   if (!row || !object) throw new SendError("添付画像が見つかりません。画像を選び直してください。");

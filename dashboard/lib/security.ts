@@ -1,7 +1,7 @@
-import { env } from "cloudflare:workers";
+import { runtimeBindings } from "./runtime-bindings";
 import { getChatGPTUser } from "@/app/chatgpt-auth";
 import { AppError } from "./domain";
-export function runtime(name: string): string { return String((env as unknown as Record<string, unknown>)[name] ?? ""); }
+export function runtime(name: string): string { return String((runtimeBindings() as unknown as Record<string, unknown>)[name] ?? ""); }
 export async function member(request?: Request) {
   const user = await getChatGPTUser();
   if (!user) throw new AppError("ログインしてください。", 401);
