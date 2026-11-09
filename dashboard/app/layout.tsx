@@ -4,6 +4,7 @@ import "./brand.css";
 import "./approval-dashboard.css";
 import "./swipe-approval.css";
 import "./destinations.css";
+import "./platform-mobile-preview.css";
 
 export const metadata: Metadata = {
   title: "Highlite | 投稿ダッシュボード",

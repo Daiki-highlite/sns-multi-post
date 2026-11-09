@@ -1,0 +1,74 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+import { BarChart3, Globe2, Heart, MessageCircle, MoreHorizontal, Repeat2, Send, Share, ThumbsUp, X } from "lucide-react";
+import { makeTargetPayloads, PLATFORM_NAMES } from "@/lib/domain";
+import type { Connection, Destination, Platform, Post } from "@/lib/types";
+
+const timestamp = (post: Post) => `${Number(post.date.slice(5,7))}月${Number(post.date.slice(8))}日 ${post.time}`;
+
+export default function PlatformMobilePreview({ post, connections, intended }: { post: Post; connections: Connection[]; intended: Destination[] }) {
+  const [platform, setPlatform] = useState<Platform>(post.platforms[0] || "x");
+  const active = post.platforms.includes(platform) ? platform : post.platforms[0];
+  const connection = connections.find(item => item.platform === active);
+  const destination = intended.find(item => item.platform === active);
+  const name = connection?.label && !connection.label.startsWith("@") ? connection.label : "Highlite";
+  const handle = destination?.username ? `@${destination.username}` : connection?.label.startsWith("@") ? connection.label : "";
+  const parts = makeTargetPayloads(post).filter(item => item.platform === active);
+  return <div className="swipe-preview platform-preview">
+    <div className="approval-preview-tabs" role="tablist" aria-label="SNS別のスマートフォン表示">
+      {post.platforms.map(item => <button key={item} id={`tab-${post.id}-${item}`} role="tab" tabIndex={item === active ? 0 : -1} aria-selected={item === active} aria-controls={`content-${post.id}`} onClick={() => setPlatform(item)} onKeyDown={event => {
+        if (!["ArrowLeft","ArrowRight","Home","End"].includes(event.key)) return;
+        event.preventDefault(); const index = post.platforms.indexOf(item), count = post.platforms.length;
+        const next = post.platforms[event.key === "Home" ? 0 : event.key === "End" ? count-1 : (index + (event.key === "ArrowRight" ? 1 : count-1)) % count];
+        setPlatform(next); document.getElementById(`tab-${post.id}-${next}`)?.focus();
+      }}><span className={`preview-platform-mark ${item}`} aria-hidden="true">{item === "x" ? "𝕏" : item === "linkedin" ? "in" : "f"}</span>{PLATFORM_NAMES[item]}</button>)}
+    </div>
+    <div id={`content-${post.id}`} className="platform-preview-scroll" role="tabpanel" aria-labelledby={active ? `tab-${post.id}-${active}` : undefined} key={`${post.revision}:${active}`}>
+      {active && <div className="platform-destination"><span>投稿先：{destination ? <a href={destination.url} target="_blank" rel="noreferrer">{connection?.label || destination.label}</a> : connection?.label || PLATFORM_NAMES[active]}</span><small>{connection ? "接続済み" : "未接続"}</small></div>}
+      {active === "x" ? <div className="native-feed native-x" aria-label="Xのスマートフォン投稿プレビュー">
+        {parts.map((part,index) => <section className="native-x-post" key={part.id}>
+          <div className={`native-x-avatar-column ${index < parts.length-1 ? "has-next" : ""}`}><Avatar platform="x" /></div>
+          <div className="native-x-post-main"><div className="native-x-author"><strong>{name}</strong><span>{handle}</span><MoreHorizontal size={19}/></div><span className="native-x-time">{index ? "続きの投稿" : `${timestamp(post)} · 公開予定`}</span>
+            <NativeText text={part.payload.text} platform="x" />
+            <NativeMedia ids={part.payload.mediaIds} platform="x" />
+            <div className="native-x-reactions" aria-label="返信・リポスト・いいね・表示回数・共有の表示イメージ"><MessageCircle/><Repeat2/><Heart/><BarChart3/><Share/></div>
+          </div>
+        </section>)}
+      </div> : active && parts[0] ? <div className={`native-feed native-${active}`} aria-label={`${PLATFORM_NAMES[active]}のスマートフォン投稿プレビュー`}>
+        <div className="native-company-author"><Avatar platform={active}/><div><strong>{name}</strong>{active === "linkedin" && <span>会社ページ</span>}<small>{timestamp(post)}<span aria-hidden="true"> · </span><Globe2 size={11}/></small></div><MoreHorizontal size={21}/>{active === "facebook" ? <X size={20} className="native-close"/> : <span className="native-follow" aria-hidden="true">＋ フォロー</span>}</div>
+        <NativeText text={parts[0].payload.text} platform={active}/>
+        <NativeMedia ids={parts[0].payload.mediaIds} platform={active}/>
+        <div className="native-company-reactions" aria-label="投稿後の操作アイコンの表示イメージ"><span><ThumbsUp/>いいね！</span><span><MessageCircle/>コメント</span>{active === "linkedin" ? <><span><Repeat2/>再投稿</span><span><Send/>送信</span></> : <span><Share/>シェア</span>}</div>
+      </div> : <div className="native-empty">投稿先が設定されていません。</div>}
+      <p className="platform-preview-caption">SP表示イメージ · 表示名・アイコンは仮表示です</p>
+    </div>
+  </div>;
+}
+
+function Avatar({ platform }: { platform: Platform }) {
+  return <span className={`native-avatar ${platform}`}><img src="/brand/highlite-symbol-color.svg" width="28" height="32" alt="Highlite（仮のプロフィール画像）" draggable={false}/></span>;
+}
+
+function NativeText({ text, platform }: { text: string; platform: Platform }) {
+  const [expanded,setExpanded] = useState(platform === "x"), [overflow,setOverflow] = useState(false);
+  const paragraph = useRef<HTMLParagraphElement>(null);
+  useEffect(() => {
+    if (expanded || platform === "x") return;
+    const element = paragraph.current; if (!element) return;
+    const measure = () => setOverflow(element.scrollHeight > element.clientHeight + 2);
+    measure(); const observer = new ResizeObserver(measure); observer.observe(element); return () => observer.disconnect();
+  }, [text, platform, expanded]);
+  const pieces = text.split(/(https?:\/\/[^\s<>]+|[#＃][\p{L}\p{N}_]+|@[A-Za-z0-9_]+)/gu);
+  return <div className={`native-text ${expanded ? "expanded" : "collapsed"}`}>
+    <p ref={paragraph}>{pieces.map((piece,index) => /^https?:\/\//.test(piece) ? <a key={index} href={piece} target="_blank" rel="noreferrer">{piece}</a> : /^[#＃@]/.test(piece) ? <span className="native-text-link" key={index}>{piece}</span> : piece)}</p>
+    {overflow && platform !== "x" && <button className="native-read-more" aria-expanded={expanded} onClick={() => setExpanded(value => !value)}>{expanded ? "一部を表示" : "…さらに表示"}</button>}
+  </div>;
+}
+
+function NativeMedia({ ids, platform }: { ids: string[]; platform: Platform }) {
+  if (!ids.length) return null;
+  return <div className={`native-media ${platform} media-${ids.length}`} aria-label={`添付画像${ids.length}枚`}>
+    {ids.map((id,index) => <img key={id} src={`/api/media/${id}`} alt={`添付画像 ${index+1}`} draggable={false}/>) }
+  </div>;
+}

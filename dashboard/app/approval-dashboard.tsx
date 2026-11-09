@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState, type PointerEvent, type CSSProperties } from "react";
-import { AlertCircle, Check, CheckCheck, Clock3, Images, Loader2, RotateCcw, X } from "lucide-react";
+import { AlertCircle, Check, CheckCheck, Clock3, Loader2, RotateCcw, X } from "lucide-react";
 import twitterText from "twitter-text";
-import { assertApprovable, PLATFORM_NAMES, statusOf } from "@/lib/domain";
+import { assertApprovable, statusOf } from "@/lib/domain";
 import { reviewIsCurrent, swipeDecision, type SwipeAction } from "@/lib/swipe";
 import type { Connection, DashboardData, Destination, Platform, Post } from "@/lib/types";
+import PlatformMobilePreview from "./platform-mobile-preview";
 
 type Destinations = Partial<Record<Platform, string>>;
 type Review = { post: Post; destinations: Destinations; connections: Connection[]; intended: Destination[] };
@@ -123,10 +124,10 @@ export default function ApprovalDashboard({ data, busy, onApprove, onUndo }: {
           onKeyDown={event => { if (event.target !== event.currentTarget || event.repeat || event.altKey || event.ctrlKey || event.metaKey || !["ArrowLeft", "ArrowRight"].includes(event.key)) return; event.preventDefault(); void decide(event.key === "ArrowRight" ? "approve" : "defer", true); }}>
           {Math.abs(drag) > 30 && <div className={`swipe-stamp ${drag > 0 ? "approve" : "defer"}`} aria-hidden="true">{drag > 0 ? "承認" : "あとで"}</div>}
           <header className="swipe-card-heading"><span>{review.post.category}</span><h3>{review.post.title}</h3><p><Clock3 size={14} /><time dateTime={review.post.plannedAt}>{dateLabel(review.post.date)} {review.post.time}</time><small>日本時間</small></p></header>
-          <ReadOnlyPost post={review.post} connections={review.connections} intended={review.intended} />
+          <PlatformMobilePreview post={review.post} connections={review.connections} intended={review.intended} />
           <div className="swipe-card-note">
-            {stale ? <div className="swipe-issue"><AlertCircle size={16} /><span>原稿や投稿先が更新されました。</span><button disabled={locked} onClick={() => { const latest = data.posts.find(post => post.id === review.post.id); setReview(latest && statusOf(latest) === "review" ? snapshot(latest) : null); setError(""); }}>最新を確認</button></div> : issue ? <div className="swipe-issue"><AlertCircle size={16} /><span>{issue}<small>「投稿管理」で準備できます。今は左へスワイプで保留できます。</small></span></div> : <p>✓を押すと、この原稿・投稿先・公開日時で承認します。</p>}
-            {(!data.schedulerReady || review.post.platforms.some(platform => !review.destinations[platform])) && <p className="swipe-connection-note">SNS接続・予約実行は設定待ちです。接続後は投稿先を確認して再承認してください。</p>}
+            {stale ? <div className="swipe-issue"><AlertCircle size={16} /><span>原稿や投稿先が更新されました。</span><button disabled={locked} onClick={() => { const latest = data.posts.find(post => post.id === review.post.id); setReview(latest && statusOf(latest) === "review" ? snapshot(latest) : null); setError(""); }}>最新を確認</button></div> : issue ? <div className="swipe-issue"><AlertCircle size={16} /><span>{issue}<small>投稿管理で準備できます。左スワイプで保留。</small></span></div> : <p>✓で、この原稿・投稿先・日時を承認します。</p>}
+            {(!data.schedulerReady || review.post.platforms.some(platform => !review.destinations[platform])) && <p className="swipe-connection-note">SNS・予約実行は設定待ちです。接続後に再承認してください。</p>}
           </div>
         </article>
         {saving && <div className="swipe-saving" role="status"><Loader2 size={22} className="spin" />{exit === "approve" ? "承認を保存しています" : "処理しています"}</div>}
@@ -138,22 +139,4 @@ export default function ApprovalDashboard({ data, busy, onApprove, onUndo }: {
       </div>
     </div>
   </section>;
-}
-
-function ReadOnlyPost({ post, connections, intended }: { post: Post; connections: Connection[]; intended: Destination[] }) {
-  const [platform, setPlatform] = useState<Platform>(post.platforms[0] || "x");
-  const active = post.platforms.includes(platform) ? platform : post.platforms[0];
-  const content = active === "x" ? post.content.x : active ? [post.content[active]] : [];
-  return <div className="swipe-preview">
-    <div className="approval-preview-tabs" role="tablist" aria-label="SNS別の投稿内容">
-      {post.platforms.map(item => <button key={item} id={`tab-${post.id}-${item}`} role="tab" aria-selected={item === active} aria-controls={`content-${post.id}`} onClick={() => setPlatform(item)}>{PLATFORM_NAMES[item]}</button>)}
-    </div>
-    <div id={`content-${post.id}`} className="swipe-copy" role="tabpanel" aria-labelledby={active ? `tab-${post.id}-${active}` : undefined}>
-      {active && <div className="approval-account">投稿先：{intended.find(d=>d.platform===active)?<a href={intended.find(d=>d.platform===active)!.url} target="_blank" rel="noreferrer">{connections.find(connection=>connection.platform===active)?.label||intended.find(d=>d.platform===active)!.label}</a>:connections.find(connection=>connection.platform===active)?.label||PLATFORM_NAMES[active]}{!connections.some(connection=>connection.platform===active)&&"（未接続）"}</div>}
-      {content.map((text, index) => <div className="approval-copy-part" key={index}>{content.length > 1 && <span>{index + 1} / {content.length}{index ? "　続きの投稿" : "　最初の投稿"}</span>}<p>{text || "本文がありません。"}</p></div>)}
-      {!content.length && <p>投稿先が設定されていません。</p>}
-      {!!post.mediaIds.length && <div className="approval-images">{post.mediaIds.map(id => <img key={id} src={`/api/media/${id}`} alt="投稿に添付する画像" draggable={false} />)}</div>}
-      {!post.mediaIds.length && <p className="swipe-image-note"><Images size={14} />{post.needsImage ? "投稿画像は準備中です" : "画像なし"}</p>}
-    </div>
-  </div>;
 }
