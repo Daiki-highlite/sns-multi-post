@@ -197,3 +197,14 @@ Claudeが4媒体ぶんの**コピペ可能な投稿本文 + チェックリス�
 ## 📝 ChangeLog
 
 - 2026-04-28: 初版作成（Daiki + Claude）
+
+## POST / ADMIN（2人用）
+
+下部のPOST・ADMINタブから原稿を確認・承認し、AIエージェントがSNSのブラウザー画面で投稿するWebアプリです。有料SNS APIや追加の予約投稿サービスは使いません。既存の原稿作成スキルと併用できます。
+
+- [セットアップと使い方](dashboard/README.md)
+- [承認・公開の仕様](dashboard/SPEC.md)
+- [エージェントのハーネス](dashboard/public/agent/HARNESS.md)
+- [SNS別の動作指示](dashboard/public/agent/OPERATIONS.md)
+
+投稿原稿・画像・接続情報はGitHubに保存せず、招待制の共有サーバーで管理します。

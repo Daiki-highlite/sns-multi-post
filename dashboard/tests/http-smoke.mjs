@@ -1,0 +1,33 @@
+import assert from "node:assert/strict";
+import {origin,headers,api,futureDate} from './support/api.mjs';
+async function request(...args){const r=await api(...args);return {status:r.status,data:r.body};}
+const initial=await request("state");assert.equal(initial.status,200);assert.equal(initial.data.connections.length,0,"Use an unconnected local test environment");
+// Exercise the R2 binding on the first authenticated write, before other routes warm up.
+const coldImage=new FormData();const coldBytes=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl6Z1sAAAAASUVORK5CYII=','base64');coldImage.set('file',new Blob([coldBytes],{type:'image/png'}),'cold-start.png');
+const coldResponse=await fetch(`${origin}/api/media`,{method:'POST',headers:Object.fromEntries(Object.entries(headers).filter(([k])=>k!=='Content-Type')),body:coldImage});assert.equal(coldResponse.status,200,'Image binding must work on the first authenticated write');
+const coldId=(await coldResponse.json()).id,coldRead=await fetch(`${origin}/api/media/${coldId}`,{headers});assert.equal(coldRead.status,200);assert.deepEqual(Buffer.from(await coldRead.arrayBuffer()),coldBytes);
+assert.equal((await fetch(`${origin}/api/jobs/run`,{method:"POST"})).status,403);
+assert.equal((await fetch(`${origin}/api/posts`,{method:"POST",headers:{...headers,Origin:""},body:"{}"})).status,403);
+const destinations=Object.fromEntries(initial.data.destinations.map(d=>[d.platform,`web:${d.url}`]));
+const badReference=new FormData();badReference.set("platform","x");badReference.set("name","test");badReference.set("theme","dark");badReference.set("header",new Blob(["fake jpeg"],{type:"image/jpeg"}),"header.jpg");badReference.set("avatar",new Blob(["fake jpeg"],{type:"image/jpeg"}),"avatar.jpg");
+assert.equal((await fetch(`${origin}/api/preview-references`,{method:"POST",headers:Object.fromEntries(Object.entries(headers).filter(([k])=>k!=="Content-Type")),body:badReference})).status,400,"Reject disguised image uploads");
+const created=await request("posts","POST",{date:futureDate(),time:"10:00"});assert.equal(created.status,200);const id=created.data.id;
+const find=async()=>(await request("state")).data.posts.find(p=>p.id===id);
+let p=await find();let edited=await request(`posts/${id}`,"PATCH",{...p,title:"[動作検証] 承認の版管理",content:{x:["test"],linkedin:"test",facebook:"test"},needsImage:false});assert.equal(edited.status,200);
+assert.equal((await request(`posts/${id}`,"PATCH",{...p,title:"古い編集"})).status,409);
+p=await find();
+const requireImage=await request(`posts/${id}`,"PATCH",{...p,needsImage:true});assert.equal(requireImage.status,200);
+p=await find();const missingImage=await request(`posts/${id}/approve`,"POST",{revision:p.revision,destinations});assert.equal(missingImage.status,400);assert.match(missingImage.data.error,/画像/);
+const textOnly=await request(`posts/${id}`,"PATCH",{...p,needsImage:false,mediaIds:[]});assert.equal(textOnly.status,200);p=await find();
+const beforeCorrection=p;
+const corrected={x:["修正したX本文", "修正した続き"],linkedin:"修正したLinkedIn本文",facebook:"修正したFacebook本文"};
+assert.equal((await request(`posts/${id}`,"PATCH",{...p,content:{...corrected,x:["(1/2) 修正したX本文","（2/2）修正した続き"]},defer:true,reviewNote:"画像の最終確認"})).status,200);
+p=await find();assert.deepEqual(p.content,corrected);assert.equal(p.reviewHold.note,"画像の最終確認");assert.ok(p.reviewHold.by);assert.ok(p.reviewHold.at);
+assert.equal((await request(`posts/${id}/approve`,"POST",{revision:beforeCorrection.revision,destinations})).status,409,"Cannot approve text shown before correction");
+const [one,two]=await Promise.all([request(`posts/${id}/approve`,"POST",{revision:p.revision,destinations}),request(`posts/${id}/approve`,"POST",{revision:p.revision,destinations})]);assert.deepEqual([one.status,two.status].sort(),[200,409]);
+p=await find();assert.equal(p.targets.length,4);assert.equal(p.reviewHold,null);assert.deepEqual(p.targets.map(t=>t.payload.text).sort(),Object.values(corrected).flat().sort(),"Publishing targets must use the saved corrected text");assert.equal(p.approvedVersion,p.version);
+const invalidHold=await request(`posts/${id}`,"PATCH",{...p,defer:true,reviewNote:"x".repeat(2001)});assert.equal(invalidHold.status,400);
+const saved=await request(`posts/${id}`,"PATCH",{...p,title:"[動作検証] 編集で承認解除"});assert.equal(saved.status,200);p=await find();assert.equal(p.approvedVersion,null);assert.equal(p.targets.length,0);
+assert.equal((await request(`posts/${id}/approve`,"POST",{revision:p.revision,destinations:{x:"別の投稿先"}})).status,409);
+assert.equal((await request(`posts/${id}`,"DELETE",{revision:p.revision})).status,200);
+console.log("HTTP smoke: login, same-origin protection, scheduler authorization, concurrent approvals, immutable destinations, durable review notes, explicit text-only approval after missing-image rejection, normalized thread text in stored/approved payload, edit invalidation, cleanup passed");

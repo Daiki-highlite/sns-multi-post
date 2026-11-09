@@ -1,0 +1,100 @@
+.approval-home:has(.swipe-dashboard) { padding-top:24px; }
+.approval-home:has(.swipe-dashboard) .page-heading { margin-bottom:16px; }
+.swipe-dashboard .approval-counts { margin-bottom:20px; padding-block:12px; }
+.swipe-workspace { max-width:624px; margin:0 auto; padding-bottom:16px; }
+.swipe-queue-heading { display:flex; align-items:center; justify-content:space-between; gap:16px; }
+.swipe-queue-heading h2 { font-size:14px; font-weight:500; }
+.swipe-queue-heading > span { font-size:11px; color:var(--hl-muted); }
+.swipe-feedback { font-size:11px; line-height:1.8; min-height:32px; margin:6px 0 8px; color:var(--hl-muted); }
+.swipe-feedback[role="alert"] { color:#994f41; }
+.swipe-stack { position:relative; isolation:isolate; }
+.swipe-under-card { position:absolute; inset:12px 14px -10px; border:1px solid var(--hl-rule); background:#f5f6fc; border-radius:24px; z-index:-1; rotate:1.5deg; }
+.swipe-card { position:relative; background:#fff; border:1px solid var(--hl-rule); border-radius:24px; box-shadow:0 8px 24px #1f40940a; transform:translateX(var(--drag-x,0px)) rotate(var(--drag-rotation,0deg)); transform-origin:50% 90%; transition:transform .18s ease,opacity .18s ease; touch-action:pan-y; outline-offset:6px; }
+.swipe-card.is-dragging { transition:none; cursor:grabbing; user-select:none; }
+.swipe-card.is-exiting-approve { transform:translateX(115%) rotate(12deg); opacity:0; pointer-events:none; }
+.swipe-card.is-exiting-defer { transform:translateX(-115%) rotate(-12deg); opacity:0; pointer-events:none; }
+.swipe-card-heading { padding:20px 28px 16px; }
+.swipe-card-heading > span { font-size:11px; color:var(--hl-muted); }
+.swipe-card-heading h3 { font-size:20px; line-height:1.6; font-weight:500; margin:6px 0 8px; overflow-wrap:anywhere; }
+.swipe-card-heading > p { display:flex; align-items:center; gap:8px; font-size:12px; color:var(--hl-deep); }
+.swipe-card-heading small { color:var(--hl-muted); font-size:10px; }
+.swipe-preview .approval-preview-tabs { padding-inline:20px; background:var(--hl-paper); border-top:1px solid var(--line); gap:24px; }
+.swipe-preview .approval-preview-tabs > button { min-height:48px; }
+.swipe-copy { padding:20px 28px; max-height:32vh; min-height:200px; overflow-y:auto; overscroll-behavior:contain; scrollbar-width:thin; scrollbar-color:var(--hl-rule) transparent; }
+.swipe-copy .approval-account { font-size:11px; margin-bottom:16px; }
+.swipe-copy .approval-copy-part > p { font-size:15px; line-height:1.9; }
+.swipe-image-note { display:flex; align-items:center; gap:8px; font-size:11px; color:var(--hl-muted); margin-top:20px; }
+.swipe-card-note { border-top:1px solid var(--line); padding:12px 28px; background:#fafbff; border-radius:0 0 24px 24px; }
+.swipe-card-note > p { color:var(--hl-muted); font-size:11px; line-height:1.8; }
+.swipe-card-note > .swipe-connection-note { font-size:10px; margin-top:4px; }
+.swipe-issue { display:flex; gap:8px; align-items:flex-start; font-size:11px; line-height:1.8; color:#886d40; }
+.swipe-issue > svg { flex-shrink:0; margin-top:3px; }
+.swipe-issue small { display:block; color:var(--hl-muted); font-size:10px; margin-top:2px; }
+.swipe-issue button { min-height:48px; margin-left:auto; white-space:nowrap; color:var(--hl-deep); text-decoration:underline; }
+.swipe-stamp { position:absolute; top:28px; z-index:3; font-size:28px; font-weight:700; padding:8px 20px; border:3px solid; border-radius:12px; pointer-events:none; background:#ffffffec; }
+.swipe-stamp.approve { left:24px; color:var(--hl-deep); rotate:-14deg; }
+.swipe-stamp.defer { right:24px; color:#9e6559; rotate:14deg; }
+.swipe-controls { display:flex; align-items:center; justify-content:center; gap:32px; padding-top:28px; }
+.swipe-controls > div { display:grid; justify-items:center; gap:8px; }
+.swipe-controls > div > span { font-size:11px; color:var(--hl-muted); }
+.swipe-control { display:grid; place-items:center; border-radius:50%; border:1px solid var(--hl-rule); width:56px; height:56px; background:white; color:var(--hl-muted); box-shadow:0 2px 8px #1f40940a; transition:background .12s,scale .12s; }
+.swipe-control:hover:not(:disabled) { background:var(--hl-paper); scale:1.05; }
+.swipe-control.undo { width:48px; height:48px; }
+.swipe-control.defer { width:64px; height:64px; color:#88695f; border-color:#d3bcb3; }
+.swipe-control.approve { width:72px; height:72px; background:var(--hl-deep); color:#fff; border-color:var(--hl-deep); }
+.swipe-control.approve:hover:not(:disabled) { background:var(--hl-blue); }
+.swipe-control:disabled { opacity:.35; cursor:default; }
+.swipe-saving { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; gap:12px; background:#e9ecf8ba; border-radius:24px; color:var(--hl-deep); font-size:13px; pointer-events:none; }
+.swipe-complete { min-height:360px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:20px; background:#fff; border:1px solid var(--line); border-radius:24px; padding:32px; color:var(--hl-deep); text-align:center; }
+.swipe-complete h3 { font-size:20px; font-weight:500; }
+.swipe-complete p { color:var(--hl-muted); font-size:13px; line-height:1.9; }
+@media(max-width:650px) {
+  .approval-home:has(.swipe-dashboard) { padding:24px 20px 16px; overflow-x:clip; }
+  .approval-home:has(.swipe-dashboard) .page-heading h1 { font-size:22px; }
+  .approval-home:has(.swipe-dashboard) .page-heading p { font-size:11px; line-height:1.9; }
+  .swipe-dashboard .approval-counts { margin-bottom:16px; padding-block:10px; }
+  .swipe-queue-heading h2 { font-size:13px; }
+  .swipe-queue-heading > span,.swipe-feedback { font-size:10px; }
+  .swipe-feedback { min-height:28px; }
+  .swipe-card-heading { padding:16px 20px 12px; }
+  .swipe-card-heading h3 { font-size:18px; margin-block:4px 6px; }
+  .swipe-card-heading > span,.swipe-card-heading > p { font-size:11px; }
+  .swipe-copy { padding:16px 20px; min-height:170px; max-height:29vh; }
+  .swipe-copy .approval-copy-part > p { font-size:14px; }
+  .swipe-preview .approval-preview-tabs { padding-inline:16px; gap:20px; }
+  .swipe-preview .approval-preview-tabs > button { min-height:48px; }
+  .swipe-card-note { padding:10px 20px; }
+  .swipe-card-note > p,.swipe-issue { font-size:10px; }
+  .swipe-issue small,.swipe-card-note > .swipe-connection-note { font-size:9px; }
+  .swipe-controls { padding-top:24px; gap:28px; }
+  .swipe-control.defer { width:56px; height:56px; }
+  .swipe-control.approve { width:64px; height:64px; }
+  .swipe-stamp { font-size:24px; }
+}
+@media(prefers-reduced-motion:reduce) {
+  .swipe-card,.swipe-control { transition:none; }
+  .swipe-card.is-exiting-approve,.swipe-card.is-exiting-defer { transform:none; }
+}
+.approval-home:has(.swipe-dashboard) { height:calc(100dvh - 72px); display:flex; flex-direction:column; padding-bottom:16px; }
+.approval-home:has(.swipe-dashboard) .page-heading { flex-shrink:0; }
+.swipe-dashboard { display:flex; flex-direction:column; flex:1; min-height:0; }
+.swipe-dashboard .approval-counts { flex-shrink:0; }
+.swipe-workspace { display:flex; flex-direction:column; flex:1; min-height:0; width:100%; padding-bottom:0; }
+.swipe-queue-heading,.swipe-feedback,.swipe-controls { flex-shrink:0; }
+.swipe-stack { flex:1; min-height:0; }
+.swipe-card { display:flex; flex-direction:column; height:100%; }
+.swipe-card-heading,.swipe-card-note { flex-shrink:0; }
+.swipe-preview { display:flex; flex-direction:column; flex:1; min-height:0; }
+.swipe-preview .approval-preview-tabs { flex-shrink:0; }
+.swipe-copy { flex:1; min-height:0; max-height:none; }
+.swipe-complete { flex:1; min-height:160px; }
+@media(max-width:650px) { .approval-home:has(.swipe-dashboard) { height:calc(100dvh - 64px); } }
+@media(min-width:651px) and (max-height:850px), (max-width:650px) and (max-height:760px) {
+  .approval-home:has(.swipe-dashboard) { height:auto; min-height:calc(100dvh - 72px); }
+  .approval-home:has(.swipe-dashboard) .today-label,.approval-home:has(.swipe-dashboard) .page-heading p { display:none; }
+  .approval-home:has(.swipe-dashboard) .page-heading { margin-bottom:8px; }
+  .approval-home:has(.swipe-dashboard) .page-heading h1 { font-size:20px; }
+  .swipe-dashboard .approval-counts { margin-bottom:12px; padding-block:8px; }
+  .swipe-stack { flex:none; height:420px; }
+  .swipe-controls { position:sticky; bottom:0; z-index:4; margin-top:16px; padding:12px 0; border-radius:999px; background:#e9ecf8f0; }
+}
