@@ -2,9 +2,9 @@ import type { agentJob } from "./browser-agent.ts";
 export type AgentJob=ReturnType<typeof agentJob>;
 export type AgentPacket={schemaVersion:number;mode:string;generatedAt:string;harness:string;jobs:AgentJob[]};
 export function activeHandoffJobs(packet:AgentPacket,selectedIds?:string[]):AgentJob[] {
-  if(!selectedIds)return packet.jobs.filter(job=>job.state!=="published");
+  if(!selectedIds)return packet.jobs.filter(job=>(!job.groupRootId||job.groupRootId===job.id) && !["published","cancelled"].includes(job.state) && (job.state!=="scheduled" || job.canVerifyPublication));
   const jobs=selectedIds.map(id=>packet.jobs.find(job=>job.id===id));
-  if(jobs.some(job=>!job || job.state==="published"))throw new Error("作業の状態が更新されています。一覧を読み直して確認してください。");
+  if(jobs.some(job=>!job || (job.groupRootId&&job.groupRootId!==job.id) || ["published","cancelled"].includes(job.state) || (job.state==="scheduled"&&!job.canVerifyPublication)))throw new Error("作業の状態が更新されています。一覧を読み直して確認してください。");
   return jobs as AgentJob[];
 }
 export function formatAgentHandoff(packet:AgentPacket,harness:string,operations:string,selectedIds?:string[]) {

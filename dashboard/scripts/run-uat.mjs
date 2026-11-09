@@ -28,10 +28,10 @@ try{
  let ready=false;
  for(let i=0;i<120;i++){if(server.exitCode!==null)throw new Error('Isolated worker exited');try{const r=await fetch(origin+'/api/state');if(r.status===401){ready=true;break;}}catch{}await new Promise(r=>setTimeout(r,250));}
  if(!ready)throw new Error('Isolated worker did not become ready');
- for(const suite of ['http-smoke.mjs','bulk-http.mjs','agent-http.mjs','uat-http.mjs']){
+ for(const suite of ['http-smoke.mjs','bulk-http.mjs','agent-http.mjs','uat-http.mjs','native-schedule-http.mjs']){
   await new Promise((resolve,reject)=>{const child=spawn(process.execPath,['tests/'+suite],{cwd:fixture,env,stdio:'inherit'});child.on('error',reject);child.on('exit',code=>code===0?resolve():reject(new Error(suite+' failed')));});
  }
- console.log('UAT: all 4 production-build HTTP suites passed in an isolated synthetic environment.');
+ console.log('UAT: all 5 production-build HTTP suites passed in an isolated synthetic environment.');
 }catch(e){console.error(logs);throw e;}
 finally{
  if(server&&server.exitCode===null){server.kill('SIGTERM');await new Promise(r=>{server.once('exit',r);setTimeout(r,5000).unref();});if(server.exitCode===null)server.kill('SIGKILL');}

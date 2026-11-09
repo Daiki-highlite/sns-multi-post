@@ -1,11 +1,11 @@
 export type Platform = "x" | "linkedin" | "facebook";
 export type PostContent = { x: string[]; linkedin: string; facebook: string };
-export type JobState = "queued" | "sending" | "published" | "failed" | "unknown" | "blocked";
+export type JobState = "queued" | "sending" | "published" | "failed" | "unknown" | "blocked" | "scheduled" | "cancelled";
 export type Target = {
   id: string; postId: string; version: number; platform: Platform; sequence: number;
   state: JobState; scheduledAt: string; remoteId: string | null; url: string | null;
   error: string | null; attempts: number; claimedAt: string | null; parentId: string | null;
-  payload: { text: string; mediaIds: string[]; accountId: string }; updatedAt: string;
+  payload: { text: string; mediaIds: string[]; accountId: string; publicationMode?: "immediate" | "scheduled"; nativeSchedule?: { url:string; plannedAt:string; confirmedAt:string; confirmedBy:string; note:string } }; updatedAt: string;
 };
 export type Post = {
   id: string; sourceKey: string; sourceRow: number; sourceSheet: string; sourcePostId: string;
@@ -13,6 +13,7 @@ export type Post = {
   plannedAt: string; content: PostContent; platforms: Platform[]; mediaIds: string[];
   imageIdea: string; imagePrompt: string; notes: string; source: string; productionStatus: string;
   needsImage: boolean; version: number; revision: string; approvedVersion: number | null;
+  publicationMode?: "immediate" | "scheduled";
   approvedDestinations?: Destination[]; approvedDeliveryMode?: "browser_agent" | "api";
   approvedBy: string | null; approvedAt: string | null; status: "review" | "approved";
   reviewHold?: { note: string; at: string; by: string } | null;

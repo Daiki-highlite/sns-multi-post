@@ -24,7 +24,7 @@ export function bulkPlan(posts: Post[], options: BulkOptions, now = Date.now()):
   const shift=options.dateMode==="shift"?(Date.parse(plannedTime(options.startDate,"12:00"))-Date.parse(plannedTime(anchor,"12:00")))/86400000:0;
   return selected.map((original,index)=>{
     const errors:string[]=[];
-    const canSave=original.revision===options.entries[index].revision && original.approvedVersion===null && !(original.targets??[]).some(t=>["sending","published","unknown"].includes(t.state));
+    const canSave=original.revision===options.entries[index].revision && original.approvedVersion===null && !(original.targets??[]).some(t=>["sending","published","unknown","scheduled"].includes(t.state));
     if(!canSave)errors.push("他の編集・承認があります。最新の状態を読み込んでください。");
     const date=shift?new Date(Date.parse(original.date+"T12:00:00Z")+shift*86400000).toISOString().slice(0,10):original.date;
     const draft:Post={...original,content:normalizeThreadContent(original.content),date,plannedAt:plannedTime(date,original.time),platforms:[...options.platforms].filter(p=>p==="x"?original.content.x.some(t=>t.trim()):!!original.content[p].trim()),mediaIds:options.imageMode==="text"?[]:options.imageMode==="shared"?[...options.mediaIds]:[...original.mediaIds],needsImage:options.imageMode==="text"?false:options.imageMode==="shared"?true:original.needsImage};

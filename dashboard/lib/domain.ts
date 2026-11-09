@@ -65,7 +65,7 @@ export function importedPosts(input: CalendarExport): Post[] {
   return result;
 }
 export function makeTargetPayloads(post: Post, accounts: Partial<Record<Platform,string>> = {}) {
-  return post.platforms.flatMap(platform => (platform === "x" ? post.content.x : [post.content[platform]]).map((text, sequence) => ({ id: `${post.id}:v${post.version}:${platform}:${sequence}`, platform, sequence, parentId: sequence ? `${post.id}:v${post.version}:${platform}:${sequence - 1}` : null, payload: { text, mediaIds: sequence ? [] : [...post.mediaIds], accountId: accounts[platform] || "" } })));
+  return post.platforms.flatMap(platform => (platform === "x" ? post.content.x : [post.content[platform]]).map((text, sequence) => ({ id: `${post.id}:v${post.version}:${platform}:${sequence}`, platform, sequence, parentId: sequence ? `${post.id}:v${post.version}:${platform}:${sequence - 1}` : null, payload: { text, mediaIds: sequence ? [] : [...post.mediaIds], accountId: accounts[platform] || "", ...(post.publicationMode?{publicationMode:post.publicationMode}:{}) } })));
 }
 export function statusOf(post: Post): string {
   const targets = post.targets ?? [];
@@ -73,8 +73,12 @@ export function statusOf(post: Post): string {
   if (targets.some(t => t.state === "unknown")) return "unknown";
   if (targets.some(t => t.state === "sending")) return "sending";
   if (targets.every(t => t.state === "published")) return "published";
+  if (targets.every(t => t.state === "cancelled")) return "cancelled";
+  if (targets.some(t => t.state === "failed")) return targets.some(t=>["published","scheduled"].includes(t.state))?"partial":"failed";
+  if (targets.some(t => t.state === "blocked")) return targets.some(t=>["published","scheduled"].includes(t.state))?"partial":"blocked";
+  if (targets.some(t => t.state === "cancelled")) return "partial";
+  if (targets.every(t => ["scheduled","published"].includes(t.state))) return "scheduled";
+  if (targets.some(t => t.state === "scheduled")) return "scheduling";
   if (targets.some(t => t.state === "published")) return "partial";
-  if (targets.some(t => t.state === "failed")) return "failed";
-  if (targets.some(t => t.state === "blocked")) return "blocked";
-  return "approved";
+  return post.publicationMode==="scheduled"&&post.approvedDeliveryMode==="browser_agent"?"schedule_pending":"approved";
 }

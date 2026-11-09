@@ -3,10 +3,12 @@
 import { useEffect, useRef, useState, type PointerEvent, type CSSProperties } from "react";
 import { AlertCircle, Check, CheckCheck, Clock3, Loader2, RotateCcw, X } from "lucide-react";
 import twitterText from "twitter-text";
-import { assertApprovable, statusOf } from "@/lib/domain";
+import { assertApprovable, statusOf, plannedTime } from "@/lib/domain";
 import { approvalAccounts } from "@/lib/delivery";
 import { reviewIsCurrent, swipeDecision, type SwipeAction } from "@/lib/swipe";
 import type { Connection, DashboardData, Destination, Platform, Post } from "@/lib/types";
+import { timingFor,nativeScheduleIssue } from "@/lib/publication";
+import PublicationTimePicker from "./publication-time-picker";
 import QuickReviewEditor from "./quick-review-editor";
 import PlatformMobilePreview from "./platform-mobile-preview";
 
@@ -18,9 +20,11 @@ const dateLabel = (date: string) => new Intl.DateTimeFormat("ja-JP", {
   timeZone: "Asia/Tokyo", month: "numeric", day: "numeric", weekday: "short",
 }).format(new Date(`${date}T12:00:00+09:00`));
 
-function approvalIssue(post: Post) {
+function approvalIssue(post: Post,browserAgent:boolean) {
   try {
-    assertApprovable(post);
+    const mode=post.publicationMode||timingFor(post.date,post.time).mode;
+    assertApprovable({...post,plannedAt:plannedTime(post.date,post.time)},mode==="immediate"?-1:Date.now());
+    if(browserAgent&&mode==="scheduled"){const issue=nativeScheduleIssue(post);if(issue)return issue;}
     if (post.platforms.includes("x") && post.content.x.some(text => !twitterText.parseTweet(text).valid)) return "Xの文字数を確認してください。";
     return "";
   } catch (error) { return (error as Error).message; }
@@ -42,7 +46,7 @@ export default function ApprovalDashboard({ data, busy, onApprove, onUndo, onSav
   const taking = useRef(false), card = useRef<HTMLElement>(null);
   const pointer = useRef<{ id: number; x: number; y: number; dx: number; dy: number; dragging: boolean } | null>(null);
   const focusNext = useRef(false);
-  const snapshot = (post: Post): Review => ({ post, destinations: approvalAccounts(data.connections,data.destinations || [],data.deliveryMode), connections: data.connections, intended:data.destinations??[] });
+  const snapshot = (post: Post): Review => ({ post:{...post,publicationMode:timingFor(post.date,post.time).mode}, destinations: approvalAccounts(data.connections,data.destinations || [],data.deliveryMode), connections: data.connections, intended:data.destinations??[] });
   const now = Date.now();
   const pending = data.posts.filter(post => statusOf(post) === "review").sort((a, b) => {
     const pastA = Date.parse(a.plannedAt) <= now, pastB = Date.parse(b.plannedAt) <= now;
@@ -52,7 +56,8 @@ export default function ApprovalDashboard({ data, busy, onApprove, onUndo, onSav
   const held = pending.filter(post => !!post.reviewHold).length;
   const counts = {
     review: pending.length,
-    approved: data.posts.filter(post => ["approved", "blocked", "sending"].includes(statusOf(post))).length,
+    approved: data.posts.filter(post => ["approved", "blocked", "sending", "schedule_pending", "scheduling"].includes(statusOf(post))).length,
+    scheduled: data.posts.filter(post => statusOf(post) === "scheduled").length,
     published: data.posts.filter(post => statusOf(post) === "published").length,
     attention: data.posts.filter(post => ["failed", "unknown", "partial"].includes(statusOf(post))).length,
   };
@@ -63,7 +68,7 @@ export default function ApprovalDashboard({ data, busy, onApprove, onUndo, onSav
     if (review && focusNext.current) { card.current?.focus({ preventScroll: true }); focusNext.current = false; }
   }, [review]);
   const stale = !!review && (!reviewIsCurrent(review.post, data.posts.find(post => post.id === review.post.id), review.destinations, Object.entries(approvalAccounts(data.connections,data.destinations || [],data.deliveryMode)).map(([platform,accountId])=>({platform:platform as Platform,accountId,label:"",configured:true}))) || JSON.stringify(review.intended)!==JSON.stringify(data.destinations??[]));
-  const issue = review ? approvalIssue(review.post) : "";
+  const issue = review ? approvalIssue(review.post,data.deliveryMode!=="api") : "";
   const locked = busy || saving;
   const decide = async (action: SwipeAction, keyboard = false) => {
     if (!review || taking.current || busy) return;
@@ -77,7 +82,7 @@ export default function ApprovalDashboard({ data, busy, onApprove, onUndo, onSav
       if (action === "approve") setHandled(keys => [...keys, keyOf(review.post)]);
 
       setPrevious({ review, action, approved: result });
-      setNotice(action === "approve" ? "承認を保存しました" : "あとで確認する投稿に残しました");
+      setNotice(action === "approve" ? (result?.publicationMode==="scheduled"?"予約する日時を承認しました。SNSへの登録待ちです。":"今すぐ投稿する内容を承認しました") : "あとで確認する投稿に残しました");
       focusNext.current = keyboard; setReview(null);
     } catch (failure) { setError((failure as Error).message); }
     finally { taking.current = false; setSaving(false); setExit(null); setDrag(0); }
@@ -116,7 +121,7 @@ export default function ApprovalDashboard({ data, busy, onApprove, onUndo, onSav
 
   return <section className="approval-dashboard swipe-dashboard" aria-label="投稿のクイック承認">
     <dl className="approval-counts" aria-label="投稿の件数">
-      {([["review", "承認待ち"], ["approved", "承認済み"], ["published", "公開済み"], ["attention", "要確認"]] as const).map(([key, label]) =>
+      {([["review", "承認待ち"], ["approved", "承認済み"], ["scheduled", "予約済み"], ["published", "公開済み"], ["attention", "要確認"]] as const).map(([key, label]) =>
         <div key={key} className={key === "review" ? "current" : ""}><dt>{label}</dt><dd>{counts[key]}<small>件</small></dd></div>
       )}
     </dl>
@@ -129,12 +134,12 @@ export default function ApprovalDashboard({ data, busy, onApprove, onUndo, onSav
           onPointerDown={pointerDown} onPointerMove={pointerMove} onPointerUp={pointerUp} onPointerCancel={() => { pointer.current = null; setDrag(0); }}
           onKeyDown={event => { if (event.target !== event.currentTarget || event.repeat || event.altKey || event.ctrlKey || event.metaKey || !["ArrowLeft", "ArrowRight"].includes(event.key)) return; event.preventDefault(); void decide(event.key === "ArrowRight" ? "approve" : "defer", true); }}>
           {Math.abs(drag) > 30 && <div className={`swipe-stamp ${drag > 0 ? "approve" : "defer"}`} aria-hidden="true">{drag > 0 ? "承認" : "あとで"}</div>}
-          <header className="swipe-card-heading"><span>{review.post.category}</span><h3>{review.post.title}</h3><p><Clock3 size={14} /><time dateTime={review.post.plannedAt}>{dateLabel(review.post.date)} {review.post.time}</time><small>日本時間</small></p></header>
+          <header className="swipe-card-heading"><span>{review.post.category}</span><h3>{review.post.title}</h3><PublicationTimePicker date={review.post.date} time={review.post.time} mode={review.post.publicationMode} disabled={locked} onChange={(date,time,plannedAt,publicationMode)=>{setReview(current=>current?{...current,post:{...current.post,date,time,plannedAt,publicationMode}}:current);setError("");}}/></header>
           <PlatformMobilePreview post={review.post} connections={review.connections} intended={review.intended} references={data.previewReferences || []} browserAgent={data.deliveryMode!=="api"} />
           <div className="swipe-card-note" id={review ? `approval-note-${review.post.id}` : undefined}>
             {review.post.reviewHold && <p className="review-hold-note">保留メモ：{review.post.reviewHold.note || "メモなし"}</p>}
             {stale ? <div className="swipe-issue"><AlertCircle size={16} /><span>原稿や投稿先が更新されました。</span><button disabled={locked} onClick={() => { const latest = data.posts.find(post => post.id === review.post.id); setReview(latest && statusOf(latest) === "review" ? snapshot(latest) : null); setError(""); }}>最新を確認</button></div> : issue ? <div className="swipe-issue"><AlertCircle size={16} /><span>{issue}<small>あとでを押すと、その場で本文・日時を修正できます。</small></span></div> : <p>✓で、この原稿・投稿先・日時を承認します。</p>}
-            {data.deliveryMode!=="api" ? <p className="swipe-connection-note">承認後、AIエージェントがSNS画面で投稿します。実行はADMINから。</p> : (!data.schedulerReady || review.post.platforms.some(platform => !review.destinations[platform])) && <p className="swipe-connection-note">SNS・予約実行は設定待ちです。接続後に再承認してください。</p>}
+            {data.deliveryMode!=="api" ? <p className="swipe-connection-note">{review.post.publicationMode==="scheduled"?"承認後、AIエージェントが各SNSへ予約登録します。登録完了はADMINで確認できます。":"承認後、AIエージェントがSNS画面で投稿します。実行はADMINから。"}</p> : (!data.schedulerReady || review.post.platforms.some(platform => !review.destinations[platform])) && <p className="swipe-connection-note">SNS・予約実行は設定待ちです。接続後に再承認してください。</p>}
           </div>
         </article>
         {saving && <div className="swipe-saving" role="status"><Loader2 size={22} className="spin" />{exit === "approve" ? "承認を保存しています" : "処理しています"}</div>}
@@ -145,17 +150,17 @@ export default function ApprovalDashboard({ data, busy, onApprove, onUndo, onSav
         <div><button className="swipe-control approve" disabled={locked || !review} aria-label="この投稿を承認して次へ" aria-describedby={review ? `approval-note-${review.post.id}` : undefined} title={issue || (stale ? "最新の原稿を確認してください" : "承認して次へ")} onClick={() => void decide("approve")}><Check size={32} /></button><span>承認</span></div>
       </div>
     </div>
-    {editorOpen && review && <QuickReviewEditor key={keyOf(review.post)} post={review.post} media={data.media} onUpload={onUpload} initialIssue={editorIssue} onClose={()=>setEditorOpen(false)} onSave={async(draft,defer,note,approve)=>{
+    {editorOpen && review && <QuickReviewEditor key={keyOf(review.post)} post={review.post} browserAgent={data.deliveryMode!=="api"} media={data.media} onUpload={onUpload} initialIssue={editorIssue} onClose={()=>setEditorOpen(false)} onSave={async(draft,defer,note,approve)=>{
       if(taking.current || busy) return;
       if(stale) throw new Error("別の人が更新しました。画面を閉じて最新の原稿を確認してください。入力内容はこの画面に残っています。");
       taking.current=true;setSaving(true);setError("");
       let saved:Post|undefined;
       try {
         saved=await onSave(draft,defer,note);
-        const result=approve?await onApprove(saved,review.destinations):undefined;
+        const result=approve?await onApprove({...saved,publicationMode:draft.publicationMode},review.destinations):undefined;
         setHandled(keys=>[...keys,keyOf(review.post),keyOf(saved!)]);
         setPrevious({review,action:approve?"approve":"defer",approved:result,saved});
-        setNotice(approve?"修正内容を保存して承認しました":"修正内容と保留メモを共有保存しました");
+        setNotice(approve?(result?.publicationMode==="scheduled"?"日時と原稿を保存して予約を承認しました。SNSへの登録待ちです。":"修正内容を保存して承認しました"):"修正内容と保留メモを共有保存しました");
         setEditorOpen(false);setReview(null);
       } catch(failure) {
         if(saved){setEditorOpen(false);setReview(snapshot(saved));setError(`本文は保存済みです。承認は完了していません。${(failure as Error).message}`);}
