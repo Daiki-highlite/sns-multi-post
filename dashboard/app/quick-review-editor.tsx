@@ -18,7 +18,7 @@ export default function QuickReviewEditor({post, onClose, onSave}: {post:Post;on
     try{await onSave(draft,!approve,note,approve);}catch(e){setError((e as Error).message);}finally{taking.current=false;setBusy(false);}
   };
   return <dialog ref={dialog} className="quick-editor" aria-labelledby="quick-editor-title" onCancel={event=>{event.preventDefault();close();}}>
-    <header><div><small>QUICK EDIT</small><h2 id="quick-editor-title">この場で直して、次へ</h2><p>{post.title}</p></div><button onClick={close} disabled={busy} aria-label="修正画面を閉じる"><X size={22}/></button></header>
+    <header><div><small>QUICK EDIT</small><p id="quick-editor-title">{post.title}</p></div><button onClick={close} disabled={busy} aria-label="修正画面を閉じる"><X size={22}/></button></header>
     <div className="quick-editor-body"><p className="quick-editor-intro">修正した本文を保存します。そのまま承認するか、メモを添えて保留できます。</p>
       <fieldset disabled={busy}>
         {draft.platforms.map(platform=><section key={platform}><h3>{PLATFORM_NAMES[platform]}</h3>{platform==="x"?draft.content.x.map((text,index)=><label key={index}>X 本文{draft.content.x.length>1?` ${index+1}`:""}<textarea rows={5} value={text} onChange={e=>setDraft(p=>({...p,content:{...p.content,x:p.content.x.map((v,i)=>i===index?e.target.value:v)}}))}/><small>{twitterText.parseTweet(text).weightedLength} / 280</small></label>):<label>{PLATFORM_NAMES[platform]} 本文<textarea rows={6} value={draft.content[platform]} onChange={e=>setDraft(p=>({...p,content:{...p.content,[platform]:e.target.value}}))}/></label>}</section>)}

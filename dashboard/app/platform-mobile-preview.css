@@ -162,7 +162,6 @@
 .quick-editor[open] { display:flex; flex-direction:column; }
 .quick-editor > header { display:flex; align-items:flex-start; justify-content:space-between; padding:22px 24px; border-bottom:1px solid var(--hl-rule); flex-shrink:0; }
 .quick-editor > header small { font-size:10px; letter-spacing:.16em; color:var(--hl-muted); }
-.quick-editor h2 { font-size:21px; margin:4px 0 8px; font-weight:500; }
 .quick-editor header p { font-size:12px; color:var(--hl-muted); }
 .quick-editor header button { min-width:44px; min-height:44px; }
 .quick-editor-body { padding:20px 24px; overflow:auto; }
