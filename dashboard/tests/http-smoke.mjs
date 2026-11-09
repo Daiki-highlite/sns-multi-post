@@ -1,0 +1,20 @@
+import assert from "node:assert/strict";
+const origin=process.env.TEST_ORIGIN||"http://127.0.0.1:5173";
+if(!["localhost","127.0.0.1"].includes(new URL(origin).hostname)) throw new Error("HTTP smoke tests only run against a disposable local environment");
+const login=await fetch(`${origin}/signin-with-chatgpt?return_to=/`,{redirect:"manual"});
+const cookie=login.headers.getSetCookie().map(s=>s.split(";")[0]).join("; ");
+const headers={Origin:origin,Cookie:cookie,"Content-Type":"application/json"};
+async function request(path,method="GET",body){const r=await fetch(`${origin}/api/${path}`,{method,headers,body:body===undefined?undefined:JSON.stringify(body)});return {status:r.status,data:await r.json()};}
+const initial=await request("state");assert.equal(initial.status,200);
+assert.equal((await fetch(`${origin}/api/jobs/run`,{method:"POST"})).status,403);
+assert.equal((await fetch(`${origin}/api/posts`,{method:"POST",headers:{Cookie:cookie,"Content-Type":"application/json"},body:"{}"})).status,403);
+const created=await request("posts","POST",{date:"2027-01-01",time:"10:00"});assert.equal(created.status,200);const id=created.data.id;
+const find=async()=>(await request("state")).data.posts.find(p=>p.id===id);
+let p=await find();let edited=await request(`posts/${id}`,"PATCH",{...p,title:"[動作検証] 承認の版管理",content:{x:["test"],linkedin:"test",facebook:"test"},needsImage:false});assert.equal(edited.status,200);
+assert.equal((await request(`posts/${id}`,"PATCH",{...p,title:"古い編集"})).status,409);
+p=await find();const [one,two]=await Promise.all([request(`posts/${id}/approve`,"POST",{revision:p.revision,destinations:{}}),request(`posts/${id}/approve`,"POST",{revision:p.revision,destinations:{}})]);assert.deepEqual([one.status,two.status].sort(),[200,409]);
+p=await find();assert.equal(p.targets.length,3);assert.equal(p.approvedVersion,p.version);
+const saved=await request(`posts/${id}`,"PATCH",{...p,title:"[動作検証] 編集で承認解除"});assert.equal(saved.status,200);p=await find();assert.equal(p.approvedVersion,null);assert.equal(p.targets.length,0);
+assert.equal((await request(`posts/${id}/approve`,"POST",{revision:p.revision,destinations:{x:"別の投稿先"}})).status,409);
+assert.equal((await request(`posts/${id}`,"DELETE",{revision:p.revision})).status,200);
+console.log("HTTP smoke: login, same-origin protection, scheduler authorization, concurrent approvals, immutable destinations, edit invalidation, cleanup passed");

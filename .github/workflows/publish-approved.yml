@@ -1,0 +1,41 @@
+name: Publish approved posts
+on:
+  schedule:
+    - cron: '2-57/5 * * * *'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: approved-post-publisher
+  cancel-in-progress: false
+jobs:
+  publish:
+    if: vars.ENABLE_AUTO_PUBLISH == 'true' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+      - name: Run only approved and due jobs
+        env:
+          DASHBOARD_URL: ${{ secrets.DASHBOARD_URL }}
+          SITES_SERVICE_TOKEN: ${{ secrets.SITES_SERVICE_TOKEN }}
+          DASHBOARD_SCHEDULER_SECRET: ${{ secrets.DASHBOARD_SCHEDULER_SECRET }}
+        run: |
+          node --input-type=module <<'NODE'
+          const { DASHBOARD_URL, SITES_SERVICE_TOKEN, DASHBOARD_SCHEDULER_SECRET } = process.env;
+          if (!DASHBOARD_URL || !SITES_SERVICE_TOKEN || !DASHBOARD_SCHEDULER_SECRET) throw new Error('Dashboard scheduler is not configured');
+          const origin = new URL(DASHBOARD_URL);
+          if (origin.protocol !== 'https:' || !origin.hostname.endsWith('.chatgpt.site')) throw new Error('Unexpected dashboard origin');
+          const response = await fetch(new URL('/api/jobs/run', origin), {
+            method: 'POST', redirect: 'manual',
+            headers: { 'OAI-Sites-Authorization': `Bearer ${SITES_SERVICE_TOKEN}`, Authorization: `Bearer ${DASHBOARD_SCHEDULER_SECRET}` },
+            signal: AbortSignal.timeout(120000)
+          });
+          if (!response.ok) throw new Error(`Scheduler request failed: ${response.status}`);
+          const result = await response.json();
+          const states = {};
+          for (const item of result.results ?? []) states[item.state] = (states[item.state] ?? 0) + 1;
+          console.log(JSON.stringify({ checkedAt: result.checkedAt, processed: result.results?.length ?? 0, states }));
+          NODE
