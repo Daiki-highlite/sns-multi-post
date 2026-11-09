@@ -62,7 +62,7 @@
   .swipe-copy { padding:16px 20px; min-height:170px; max-height:29vh; }
   .swipe-copy .approval-copy-part > p { font-size:14px; }
   .swipe-preview .approval-preview-tabs { padding-inline:16px; gap:20px; }
-  .swipe-preview .approval-preview-tabs > button { min-height:44px; }
+  .swipe-preview .approval-preview-tabs > button { min-height:48px; }
   .swipe-card-note { padding:10px 20px; }
   .swipe-card-note > p,.swipe-issue { font-size:10px; }
   .swipe-issue small,.swipe-card-note > .swipe-connection-note { font-size:9px; }
