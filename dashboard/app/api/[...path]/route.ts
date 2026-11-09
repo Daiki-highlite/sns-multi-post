@@ -95,7 +95,7 @@ async function api(request: Request) {
       const stmts = [db.prepare("UPDATE posts SET document=?,revision=?,approved_version=?,planned_at=?,updated_at=? WHERE id=? AND revision=? AND NOT EXISTS(SELECT 1 FROM targets WHERE post_id=? AND state IN ('sending','published','unknown'))").bind(JSON.stringify(next), next.revision, next.version, next.plannedAt, next.updatedAt, id, old.revision, id)];
       for (const t of makeTargetPayloads(next,accounts)) stmts.push(db.prepare("INSERT INTO targets(id,post_id,version,platform,sequence,parent_id,state,scheduled_at,payload,attempts,updated_at) SELECT ?,?,?,?,?,?,'queued',?,?,0,? WHERE EXISTS(SELECT 1 FROM posts WHERE id=? AND revision=?) ON CONFLICT(id) DO NOTHING").bind(t.id, id, old.version, t.platform, t.sequence, t.parentId, next.plannedAt, JSON.stringify(t.payload), next.updatedAt, id, next.revision));
       const results = await db.batch(stmts); if (!results[0].meta.changes) throw new AppError("投稿が更新されました。再読み込みしてください。", 409);
-      await activity("approved", actor, "内容を承認して予約しました。", id); return json({ approved: true });
+      await activity("approved", actor, "内容を承認して予約しました。", id); return json({ approved: true, post: next });
     }
     let next: Post;
     if (action === "revoke") next = { ...old, approvedVersion: null, approvedBy: null, approvedAt: null, status: "review", revision: crypto.randomUUID(), updatedAt: new Date().toISOString() };

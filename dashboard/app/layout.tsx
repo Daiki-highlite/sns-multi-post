@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import "./brand.css";
 import "./approval-dashboard.css";
+import "./swipe-approval.css";
 
 export const metadata: Metadata = {
   title: "Highlite | 投稿ダッシュボード",
