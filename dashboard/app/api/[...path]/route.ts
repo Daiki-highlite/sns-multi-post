@@ -11,6 +11,7 @@ import type { CalendarExport, Platform, Post } from "@/lib/types";
 import { approvalAccounts } from "@/lib/delivery";
 import { deliveryMode } from "@/lib/delivery-settings";
 import { agentJob, publishedEvidence, AGENT_LEASE_MS } from "@/lib/browser-agent";
+import { normalizeThreadContent } from "@/lib/thread-text";
 import { bulkPlan } from "@/lib/bulk";
 export const dynamic = "force-dynamic";
 async function body(request: Request) {
@@ -109,7 +110,7 @@ async function api(request: Request) {
       if (!input.title?.trim() || input.title.length > 200 || !Array.isArray(input.platforms) || input.platforms.some((p: Platform) => !PLATFORMS.includes(p)) || !input.content || !Array.isArray(input.content.x) || input.content.x.length > 10 || input.content.x.some((v: unknown) => typeof v !== "string") || typeof input.content.linkedin !== "string" || typeof input.content.facebook !== "string" || JSON.stringify(input.content).length > 200000 || !Array.isArray(input.mediaIds) || input.mediaIds.length > 4 || input.mediaIds.some((v: unknown) => typeof v !== "string")) throw new AppError("投稿内容の形式を確認してください。");
       if (input.defer !== undefined && typeof input.defer !== "boolean") throw new AppError("保留の指定を確認してください。");
       if (input.reviewNote !== undefined && (typeof input.reviewNote !== "string" || input.reviewNote.length > 2000)) throw new AppError("保留メモは2,000文字以内にしてください。");
-      next = { ...old, ...(input.defer !== undefined ? { reviewHold: input.defer ? { note: input.reviewNote || "", at: new Date().toISOString(), by: actor } : null } : {}), title: input.title.trim(), date: input.date, time: input.time, plannedAt: plannedTime(input.date, input.time), platforms: [...new Set<Platform>(input.platforms)], content: input.content, mediaIds: input.mediaIds, needsImage: input.needsImage === true, notes: String(input.notes ?? old.notes).slice(0, 20000), version: old.version + 1, revision: crypto.randomUUID(), approvedVersion: null, approvedBy: null, approvedAt: null, status: "review", updatedAt: new Date().toISOString() };
+      next = { ...old, ...(input.defer !== undefined ? { reviewHold: input.defer ? { note: input.reviewNote || "", at: new Date().toISOString(), by: actor } : null } : {}), title: input.title.trim(), date: input.date, time: input.time, plannedAt: plannedTime(input.date, input.time), platforms: [...new Set<Platform>(input.platforms)], content: normalizeThreadContent(input.content), mediaIds: input.mediaIds, needsImage: input.needsImage === true, notes: String(input.notes ?? old.notes).slice(0, 20000), version: old.version + 1, revision: crypto.randomUUID(), approvedVersion: null, approvedBy: null, approvedAt: null, status: "review", updatedAt: new Date().toISOString() };
     }
     const results = await db.batch([
       db.prepare("UPDATE posts SET document=?,revision=?,version=?,approved_version=NULL,planned_at=?,updated_at=? WHERE id=? AND revision=? AND NOT EXISTS(SELECT 1 FROM targets WHERE post_id=? AND state IN ('sending','published','unknown'))").bind(JSON.stringify(next), next.revision, next.version, next.plannedAt, next.updatedAt, id, old.revision, id),

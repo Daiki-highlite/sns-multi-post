@@ -1,5 +1,6 @@
 import twitterText from "twitter-text";
 import { AppError, assertApprovable, plannedTime, PLATFORMS } from "./domain.ts";
+import { normalizeThreadContent } from "./thread-text.ts";
 import type { Platform, Post } from "./types.ts";
 
 export type BulkOptions = {
@@ -25,7 +26,7 @@ export function bulkPlan(posts: Post[], options: BulkOptions, now = Date.now()):
     const canSave=original.revision===options.entries[index].revision && original.approvedVersion===null && !(original.targets??[]).some(t=>["sending","published","unknown"].includes(t.state));
     if(!canSave)errors.push("他の編集・承認があります。最新の状態を読み込んでください。");
     const date=shift?new Date(Date.parse(original.date+"T12:00:00Z")+shift*86400000).toISOString().slice(0,10):original.date;
-    const draft:Post={...original,date,plannedAt:plannedTime(date,original.time),platforms:[...options.platforms].filter(p=>p==="x"?original.content.x.some(t=>t.trim()):!!original.content[p].trim()),mediaIds:options.imageMode==="text"?[]:options.imageMode==="shared"?[...options.mediaIds]:[...original.mediaIds],needsImage:options.imageMode==="text"?false:options.imageMode==="shared"?true:original.needsImage};
+    const draft:Post={...original,content:normalizeThreadContent(original.content),date,plannedAt:plannedTime(date,original.time),platforms:[...options.platforms].filter(p=>p==="x"?original.content.x.some(t=>t.trim()):!!original.content[p].trim()),mediaIds:options.imageMode==="text"?[]:options.imageMode==="shared"?[...options.mediaIds]:[...original.mediaIds],needsImage:options.imageMode==="text"?false:options.imageMode==="shared"?true:original.needsImage};
     try{assertApprovable(draft,now);}catch(e){errors.push((e as Error).message);}
     if(draft.platforms.includes("x") && draft.content.x.some(t=>!twitterText.parseTweet(t).valid))errors.push("Xの本文が文字数などの条件を満たしていません。");
     return {original,draft,errors,canSave};

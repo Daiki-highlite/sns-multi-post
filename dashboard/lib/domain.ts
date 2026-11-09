@@ -1,3 +1,4 @@
+import { normalizeThreadContent } from "./thread-text.ts";
 import type { CalendarExport, Platform, Post } from "./types";
 
 export const PLATFORMS: Platform[] = ["x", "linkedin", "facebook"];
@@ -52,7 +53,7 @@ export function importedPosts(input: CalendarExport): Post[] {
       const date = String(row[0] ?? "").replaceAll("/", "-");
       const time = String(row[7] ?? "");
       const platforms = PLATFORMS.filter(p => p === "x" ? rows.some(r => r.row[4]?.trim()) : !!row[p === "linkedin" ? 5 : 6]?.trim());
-      const content = { x: rows.map(r => String(r.row[4] ?? "")).filter(Boolean), linkedin: String(row[5] ?? ""), facebook: String(row[6] ?? "") };
+      const content = normalizeThreadContent({ x: rows.map(r => String(r.row[4] ?? "")).filter(Boolean), linkedin: String(row[5] ?? ""), facebook: String(row[6] ?? "") });
       const sourceHash = JSON.stringify(rows.map(r => r.row));
       result.push({ id: crypto.randomUUID(), sourceKey, sourceRow: first.number, sourceSheet: tab.name, sourcePostId: String(row[8]), title: String(row[2] ?? ""), category: tab.name, theme: String(row[1] ?? ""), date, time, plannedAt: plannedTime(date, time), content, platforms, mediaIds: [], imageIdea: String(row[12] ?? ""), imagePrompt: String(row[13] ?? ""), notes: String(row[10] ?? ""), source: String(row[11] ?? ""), productionStatus: String(row[14] ?? "未着手"), needsImage: !!row[12], version: 1, revision: crypto.randomUUID(), approvedVersion: null, approvedBy: null, approvedAt: null, status: "review", createdAt: now, updatedAt: now, sourceHash });
     }

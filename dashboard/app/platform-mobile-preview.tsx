@@ -34,7 +34,7 @@ export default function PlatformMobilePreview({ post, connections, intended, ref
         {parts.map((part,index) => <section className="native-x-post" key={part.id}>
           <div className="native-x-detail-author"><Avatar platform="x" reference={reference}/><div><strong>{name}</strong><span>{handle}</span></div><MoreHorizontal size={19}/></div>
           <div className="native-x-post-main">
-            {index>0&&<small className="native-thread-label">自己返信 {index+1} / {parts.length}</small>}
+            {index>0&&<small className="native-thread-label">自己返信</small>}
             <NativeText text={part.payload.text} platform="x" />
             <NativeMedia ids={part.payload.mediaIds} platform="x" />
             <span className="native-x-time">{timestamp(post)}</span>

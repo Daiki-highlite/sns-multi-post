@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { Check, X, Upload } from "lucide-react";
 import twitterText from "twitter-text";
 import { assertApprovable, plannedTime, PLATFORM_NAMES } from "@/lib/domain";
+import { normalizeThreadContent } from "@/lib/thread-text";
 import type { Media, Post } from "@/lib/types";
 
 export default function QuickReviewEditor({post, media, onUpload, initialIssue="", onClose, onSave}: {post:Post;media:Media[];onUpload:(file:File)=>Promise<string>;initialIssue?:string;onClose:()=>void;onSave:(post:Post,defer:boolean,note:string,approve:boolean)=>Promise<void>}) {
@@ -14,9 +15,10 @@ export default function QuickReviewEditor({post, media, onUpload, initialIssue="
   const close=()=>{if(!taking.current&&(!dirty||window.confirm("保存していない修正を破棄して閉じますか？")))onClose();};
   const save=async(approve:boolean)=>{
     if(taking.current)return;
-    if(approve)try{assertApprovable({...draft,plannedAt:plannedTime(draft.date,draft.time)});if(draft.platforms.includes("x")&&draft.content.x.some(text=>!twitterText.parseTweet(text).valid))throw new Error("Xの文字数を確認してください。");}catch(e){showError((e as Error).message);return;}
+    const candidate={...draft,content:normalizeThreadContent(draft.content)};
+    if(approve)try{assertApprovable({...candidate,plannedAt:plannedTime(candidate.date,candidate.time)});if(candidate.platforms.includes("x")&&candidate.content.x.some(text=>!twitterText.parseTweet(text).valid))throw new Error("Xの文字数を確認してください。");}catch(e){showError((e as Error).message);return;}
     taking.current=true;setBusy(true);setError("");
-    try{await onSave(draft,!approve,note,approve);}catch(e){showError((e as Error).message);}finally{taking.current=false;setBusy(false);}
+    try{await onSave(candidate,!approve,note,approve);}catch(e){showError((e as Error).message);}finally{taking.current=false;setBusy(false);}
   };
   const withImage=draft.needsImage || draft.mediaIds.length>0;
   const upload=async(file:File)=>{

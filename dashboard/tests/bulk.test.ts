@@ -11,3 +11,10 @@ test("共通画像を別配列で適用し、原稿を混ぜない",()=>{const p
 test("承認済み・古い版の投稿を一括設定で上書きしない",()=>{const ps=posts(),c=config(ps);ps[0].revision="updated";ps[1].approvedVersion=1;const r=bulkPlan(ps,c,0);assert.ok(r.every(p=>!p.canSave&&p.errors.length>0));});
 test("日付を保つ設定では、過去の予定を承認可能にしない",()=>{const ps=posts(),c={...config(ps),dateMode:"keep" as const};assert.ok(bulkPlan(ps,c,Date.parse("2027-01-01")).every(p=>p.errors.some(e=>e.includes("公開日時"))));});
 test("Xの重み付き文字数違反を一括承認前に見つける",()=>{const ps=posts();ps[0].content.x=["あ".repeat(150)];const r=bulkPlan(ps,config(ps),0);assert.ok(r[0].errors.some(e=>e.includes("Xの本文")));assert.equal(r[1].errors.length,0);});
+
+test("一括確認も本文の連投番号を外し、元の原稿を変更しない",()=>{
+ const original=posts()[0];original.content.x=["(1/2) 親投稿","(2/2) 続き"];
+ const entry=bulkPlan([original],{entries:[{id:original.id,revision:original.revision}],platforms:["x"],dateMode:"shift",startDate:"2027-01-01",imageMode:"text",mediaIds:[]},Date.parse("2026-01-01T00:00:00Z"))[0];
+ assert.deepEqual(entry.draft.content.x,["親投稿","続き"]);
+ assert.deepEqual(original.content.x,["(1/2) 親投稿","(2/2) 続き"]);
+});

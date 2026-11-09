@@ -21,7 +21,7 @@ p=await find();const missingImage=await request(`posts/${id}/approve`,"POST",{re
 const textOnly=await request(`posts/${id}`,"PATCH",{...p,needsImage:false,mediaIds:[]});assert.equal(textOnly.status,200);p=await find();
 const beforeCorrection=p;
 const corrected={x:["修正したX本文", "修正した続き"],linkedin:"修正したLinkedIn本文",facebook:"修正したFacebook本文"};
-assert.equal((await request(`posts/${id}`,"PATCH",{...p,content:corrected,defer:true,reviewNote:"画像の最終確認"})).status,200);
+assert.equal((await request(`posts/${id}`,"PATCH",{...p,content:{...corrected,x:["(1/2) 修正したX本文","（2/2）修正した続き"]},defer:true,reviewNote:"画像の最終確認"})).status,200);
 p=await find();assert.deepEqual(p.content,corrected);assert.equal(p.reviewHold.note,"画像の最終確認");assert.ok(p.reviewHold.by);assert.ok(p.reviewHold.at);
 assert.equal((await request(`posts/${id}/approve`,"POST",{revision:beforeCorrection.revision,destinations})).status,409,"Cannot approve text shown before correction");
 const [one,two]=await Promise.all([request(`posts/${id}/approve`,"POST",{revision:p.revision,destinations}),request(`posts/${id}/approve`,"POST",{revision:p.revision,destinations})]);assert.deepEqual([one.status,two.status].sort(),[200,409]);
@@ -30,4 +30,4 @@ const invalidHold=await request(`posts/${id}`,"PATCH",{...p,defer:true,reviewNot
 const saved=await request(`posts/${id}`,"PATCH",{...p,title:"[動作検証] 編集で承認解除"});assert.equal(saved.status,200);p=await find();assert.equal(p.approvedVersion,null);assert.equal(p.targets.length,0);
 assert.equal((await request(`posts/${id}/approve`,"POST",{revision:p.revision,destinations:{x:"別の投稿先"}})).status,409);
 assert.equal((await request(`posts/${id}`,"DELETE",{revision:p.revision})).status,200);
-console.log("HTTP smoke: login, same-origin protection, scheduler authorization, concurrent approvals, immutable destinations, durable review notes, explicit text-only approval after missing-image rejection, corrected publishing payload, edit invalidation, cleanup passed");
+console.log("HTTP smoke: login, same-origin protection, scheduler authorization, concurrent approvals, immutable destinations, durable review notes, explicit text-only approval after missing-image rejection, normalized thread text in stored/approved payload, edit invalidation, cleanup passed");
