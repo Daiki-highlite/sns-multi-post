@@ -7,6 +7,7 @@ import { verifyConnection } from "@/lib/providers";
 import { readCalendar } from "@/lib/sheets";
 import { runDueJobs } from "@/lib/jobs";
 import type { CalendarExport, Platform, Post } from "@/lib/types";
+import { bulkPlan } from "@/lib/bulk";
 export const dynamic = "force-dynamic";
 async function body(request: Request) {
   if (Number(request.headers.get("content-length") || 0) > 5000000) throw new AppError("ファイルは5MB以内にしてください。", 413);
@@ -28,7 +29,7 @@ async function importCalendar(data: CalendarExport, apply: boolean, overwrite: R
     if (res.meta.changes) updated++; else skipped++;
   }
   await setting("lastImportAt", new Date().toISOString()); await setting("importedCount", incoming.length); await setting("spreadsheetId", data.spreadsheetId); await setting("tabs", data.tabs.map(t => ({ name: t.name, sheetId: t.sheetId })));
-  await activity("imported", actor, `${added.length}件を追加、${updated}件を更新しました。`); return { added: added.length, updated, skipped };
+  await activity("imported", actor, `${added.length}件を追加、${updated}件を更新しました。`); return { added: added.length, updated, skipped, importedIds: incoming.map(p=>byKey.get(p.sourceKey)?.id||p.id) };
 }
 async function api(request: Request) {
  try {
@@ -39,6 +40,30 @@ async function api(request: Request) {
   if (path === "state" && method === "GET") return json({ posts: await allPosts(), ...await metadata(), user: { displayName: actor, email: user.email }, sheetsReady: !!runtime("GOOGLE_SERVICE_ACCOUNT_EMAIL") && !!runtime("GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY"), schedulerReady: runtime("SCHEDULER_ENABLED") === "true" });
   if (path === "import" && method === "POST") { const input = await body(request); return json(await importCalendar(input.data, input.apply === true, input.overwrite ?? {}, actor)); }
   if (path === "sheets/read" && method === "POST") { const input = await body(request); return json(await importCalendar(await readCalendar(input.spreadsheetId, input.tabs), false, {}, actor)); }
+  if (path === "posts/bulk" && method === "POST") {
+    const input=await body(request);
+    if(!["draft","approve"].includes(input.mode))throw new AppError("登録方法を選んでください。");
+    const db=database(),plan=bulkPlan(await allPosts(),input.options);
+    if(input.mode==="approve"&&!input.allowIncomplete&&plan.some(p=>p.errors.length))throw new AppError("確認が必要な原稿があります。下書きに残すか、共通設定を見直してください。");
+    const connections=await db.prepare("SELECT platform,account_id FROM connections").all<{platform:Platform;account_id:string}>();
+    const accounts=Object.fromEntries(connections.results.map(c=>[c.platform,c.account_id]));
+    if(input.mode==="approve"&&input.options.platforms.some((p:Platform)=>(input.destinations?.[p]||"")!==(accounts[p]||"")))throw new AppError("投稿先が変更されました。再読み込みして確認してください。",409);
+    const mediaIds=[...new Set<string>(plan.flatMap(p=>p.draft.mediaIds))];
+    if(mediaIds.length){const known=await db.prepare("SELECT id FROM media").all<{id:string}>();const valid=new Set(known.results.map(m=>m.id));if(mediaIds.some(id=>!valid.has(id)))throw new AppError("選択した画像が見つかりません。画像を選び直してください。");}
+    let approved=0,saved=0,drafts=0;const skipped:{id:string;title:string;reason:string}[]=[];
+    for(const entry of plan){
+      if(!entry.canSave){skipped.push({id:entry.original.id,title:entry.original.title,reason:entry.errors[0]});continue;}
+      const isApproval=input.mode==="approve"&&!entry.errors.length;
+      const stamp=new Date().toISOString(),next:Post={...entry.draft,targets:undefined,version:entry.original.version+1,revision:crypto.randomUUID(),approvedVersion:isApproval?entry.original.version+1:null,approvedAt:isApproval?stamp:null,approvedBy:isApproval?actor:null,status:isApproval?"approved":"review",updatedAt:stamp};
+      const statements=[db.prepare("UPDATE posts SET document=?,revision=?,version=?,approved_version=?,planned_at=?,updated_at=? WHERE id=? AND revision=? AND approved_version IS NULL AND NOT EXISTS(SELECT 1 FROM targets WHERE post_id=? AND state IN ('sending','published','unknown'))").bind(JSON.stringify(next),next.revision,next.version,next.approvedVersion,next.plannedAt,stamp,next.id,entry.original.revision,next.id),db.prepare("DELETE FROM targets WHERE post_id=? AND EXISTS(SELECT 1 FROM posts WHERE id=? AND revision=?)").bind(next.id,next.id,next.revision)];
+      if(isApproval)for(const t of makeTargetPayloads(next,accounts))statements.push(db.prepare("INSERT INTO targets(id,post_id,version,platform,sequence,parent_id,state,scheduled_at,payload,attempts,updated_at) SELECT ?,?,?,?,?,?,'queued',?,?,0,? WHERE EXISTS(SELECT 1 FROM posts WHERE id=? AND revision=?)").bind(t.id,next.id,next.version,t.platform,t.sequence,t.parentId,next.plannedAt,JSON.stringify(t.payload),stamp,next.id,next.revision));
+      const results=await db.batch(statements);
+      if(!results[0].meta.changes){skipped.push({id:next.id,title:next.title,reason:"他の編集・承認が先に保存されました。"});continue;}
+      saved++;if(isApproval)approved++;else drafts++;
+    }
+    await activity(input.mode==="approve"?"approved":"edited",actor,`一括登録：${approved}件を承認、${drafts}件を下書き保存、${skipped.length}件を保留しました。`);
+    return json({approved,saved,drafts,skipped});
+  }
   if (path === "posts" && method === "POST") {
     const now = new Date().toISOString(), id = crypto.randomUUID(), input = await body(request);
     const post: Post = { id, sourceKey: `manual:${id}`, sourceRow: 0, sourceSheet: "手動作成", sourcePostId: "", title: "新しい投稿", category: "手動作成", theme: "", date: input.date, time: input.time || "12:00", plannedAt: plannedTime(input.date, input.time || "12:00"), content: { x: [""], linkedin: "", facebook: "" }, platforms: [...PLATFORMS], mediaIds: [], imageIdea: "", imagePrompt: "", notes: "", source: "", productionStatus: "未着手", needsImage: false, version: 1, revision: crypto.randomUUID(), approvedVersion: null, approvedBy: null, approvedAt: null, status: "review", createdAt: now, updatedAt: now, sourceHash: "" };

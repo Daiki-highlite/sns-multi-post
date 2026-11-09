@@ -5,7 +5,7 @@ const login=await fetch(`${origin}/signin-with-chatgpt?return_to=/`,{redirect:"m
 const cookie=login.headers.getSetCookie().map(s=>s.split(";")[0]).join("; ");
 const headers={Origin:origin,Cookie:cookie,"Content-Type":"application/json"};
 async function request(path,method="GET",body){const r=await fetch(`${origin}/api/${path}`,{method,headers,body:body===undefined?undefined:JSON.stringify(body)});return {status:r.status,data:await r.json()};}
-const initial=await request("state");assert.equal(initial.status,200);
+const initial=await request("state");assert.equal(initial.status,200);assert.equal(initial.data.connections.length,0,"Use an unconnected local test environment");
 assert.equal((await fetch(`${origin}/api/jobs/run`,{method:"POST"})).status,403);
 assert.equal((await fetch(`${origin}/api/posts`,{method:"POST",headers:{Cookie:cookie,"Content-Type":"application/json"},body:"{}"})).status,403);
 const created=await request("posts","POST",{date:"2027-01-01",time:"10:00"});assert.equal(created.status,200);const id=created.data.id;
